@@ -45,16 +45,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // DIAL MODES DEFINITION
   const DIAL_MODES = [
-    { angle: -160, view: "rccb-view", name: "RCCB TRIP GUIDE" },
-    { angle: -120, view: "welcome-view", name: "OFF MODE" },
-    { angle: -80, view: "resistor-view", name: "RESISTOR OHM" },
-    { angle: -40, view: "capacitor-view", name: "CAPACITOR FARAD" },
-    { angle: 0, view: "inductor-view", name: "INDUCTOR HENRY" },
-    { angle: 40, view: "led-view", name: "LED TEST" },
-    { angle: 80, view: "laws-view", name: "PHYSICS LAW" },
-    { angle: 120, view: "substitutes-view", name: "ALT DIODE/TR" },
-    { angle: 160, view: "checking-view", name: "COMP CHECKING" },
-    { angle: 180, view: "continuity-view", name: "AUDIO CONT" }
+    { angle: -162, view: "rccb-view", name: "RCCB TRIP GUIDE" },
+    { angle: -126, view: "welcome-view", name: "OFF MODE" },
+    { angle: -90, view: "resistor-view", name: "RESISTOR OHM" },
+    { angle: -54, view: "capacitor-view", name: "CAPACITOR FARAD" },
+    { angle: -18, view: "inductor-view", name: "INDUCTOR HENRY" },
+    { angle: 18, view: "led-view", name: "LED TEST" },
+    { angle: 54, view: "laws-view", name: "PHYSICS LAW" },
+    { angle: 90, view: "substitutes-view", name: "ALT DIODE/TR" },
+    { angle: 126, view: "checking-view", name: "COMP CHECKING" },
+    { angle: 162, view: "continuity-view", name: "AUDIO CONT" }
   ];
 
   // Sound and Haptics
@@ -217,14 +217,10 @@ document.addEventListener("DOMContentLoaded", () => {
     
     let angle = getAngle(clientX, clientY, cx, cy);
     
-    // The dial ranges from -160 to 180 degrees.
-    // The "forbidden zone" is from -180 to -160.
-    if (angle < -160) {
-      if (angle < -170) {
-        angle = 180;
-      } else {
-        angle = -160;
-      }
+    // The dial ranges symmetrically from -162 to 162 degrees.
+    // The "forbidden zone" at the bottom is from -180 to -162 and 162 to 180.
+    if (Math.abs(angle) > 162) {
+      angle = angle > 0 ? 162 : -162;
     }
     
     let closestMode = DIAL_MODES[0];
@@ -327,7 +323,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Set initial state
   setTimeout(() => {
-    rotateDial(-120);
+    rotateDial(-126);
     window.updateDmmLcd("OFF", "", "OFF MODE");
   }, 10);
 });

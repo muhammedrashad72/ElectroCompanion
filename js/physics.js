@@ -41,12 +41,13 @@ document.addEventListener("DOMContentLoaded", () => {
       ]
     },
     "voltage-divider": {
-      title: "Voltage Divider Solver (Vout = Vin × R2 / (R1 + R2))",
-      explanation: "A voltage divider is a simple passive linear circuit that produces an output voltage (Vout) that is a fraction of its input voltage (Vin). R1 is the top resistor, and R2 is the bottom resistor connected to ground.",
+      title: "Loaded Voltage Divider Solver",
+      explanation: "A voltage divider produces an output voltage (Vout) that is a fraction of its input voltage (Vin). If a load current (Iload) is connected to the output node, the output voltage drops. Set Iload = 0 for an unloaded divider.",
       params: [
         { id: "Vin", label: "Input Voltage (Vin)", units: [{ name: "V", val: 1 }, { name: "mV", val: 1e-3 }, { name: "kV", val: 1e3 }] },
         { id: "R1", label: "Resistor R1 (Top)", units: [{ name: "Ω", val: 1 }, { name: "kΩ", val: 1e3 }, { name: "MΩ", val: 1e6 }] },
         { id: "R2", label: "Resistor R2 (Bottom)", units: [{ name: "Ω", val: 1 }, { name: "kΩ", val: 1e3 }, { name: "MΩ", val: 1e6 }] },
+        { id: "Iload", label: "Load Current", units: [{ name: "mA", val: 1e-3 }, { name: "A", val: 1 }, { name: "µA", val: 1e-6 }] },
         { id: "Vout", label: "Output Voltage (Vout)", units: [{ name: "V", val: 1 }, { name: "mV", val: 1e-3 }, { name: "kV", val: 1e3 }] }
       ]
     }
@@ -140,7 +141,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const inputEl = document.getElementById(`phy-${paramId}`);
     const valStr = inputEl ? inputEl.value.trim() : "";
 
-    const maxParams = (physicsState.activeLaw === "voltage-divider") ? 3 : 2;
+    const maxParams = (physicsState.activeLaw === "voltage-divider") ? 4 : 2;
 
     if (valStr !== "") {
       physicsState.lastEdited = physicsState.lastEdited.filter(p => p !== paramId);
@@ -151,6 +152,22 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } else {
       physicsState.lastEdited = physicsState.lastEdited.filter(p => p !== paramId);
+    }
+
+    // Auto-fill Iload to 0 if Vin, R1, R2 are entered but Iload and Vout are blank
+    if (physicsState.activeLaw === "voltage-divider" && physicsState.lastEdited.length === 3) {
+      const iloadEl = document.getElementById("phy-Iload");
+      const voutEl = document.getElementById("phy-Vout");
+      if (physicsState.lastEdited.includes("Vin") &&
+          physicsState.lastEdited.includes("R1") &&
+          physicsState.lastEdited.includes("R2") &&
+          (!iloadEl || iloadEl.value.trim() === "") &&
+          (!voutEl || voutEl.value.trim() === "")) {
+        if (iloadEl) {
+          iloadEl.value = "0";
+          physicsState.lastEdited.push("Iload");
+        }
+      }
     }
 
     const config = LAW_CONFIGS[physicsState.activeLaw];
@@ -285,41 +302,51 @@ document.addEventListener("DOMContentLoaded", () => {
       let Vin = getBaseValue("Vin");
       let R1 = getBaseValue("R1");
       let R2 = getBaseValue("R2");
+      let Iload = getBaseValue("Iload");
       let Vout = getBaseValue("Vout");
+
+      if (isNaN(Iload)) {
+        Iload = 0;
+      }
 
       if (targetId === "Vout") {
         if (!isNaN(Vin) && !isNaN(R1) && !isNaN(R2) && (R1 + R2) !== 0) {
-          Vout = Vin * (R2 / (R1 + R2));
+          Vout = (Vin * R2 - Iload * R1 * R2) / (R1 + R2);
+          if (Vout < 0) Vout = 0;
           setPhysicsOutput("Vout", Vout);
         }
       } else if (targetId === "Vin") {
         if (!isNaN(Vout) && !isNaN(R1) && !isNaN(R2) && R2 !== 0) {
-          Vin = Vout * ((R1 + R2) / R2);
+          Vin = Vout * (1 + R1 / R2) + Iload * R1;
           setPhysicsOutput("Vin", Vin);
         } else if (R2 === 0) {
           showPhysicsError("R2 cannot be zero when solving for Vin.");
         }
       } else if (targetId === "R1") {
-        if (!isNaN(Vin) && !isNaN(Vout) && !isNaN(R2) && Vout !== 0) {
+        if (!isNaN(Vin) && !isNaN(Vout) && !isNaN(R2) && (Vout / R2 + Iload) !== 0) {
           if (Vin < Vout) {
             showPhysicsError("Vin must be greater than or equal to Vout.");
           } else {
-            R1 = R2 * ((Vin - Vout) / Vout);
+            R1 = (Vin - Vout) / (Vout / R2 + Iload);
+            if (R1 < 0) R1 = 0;
             setPhysicsOutput("R1", R1);
           }
-        } else if (Vout === 0) {
-          showPhysicsError("Vout cannot be zero when solving for R1.");
         }
       } else if (targetId === "R2") {
-        if (!isNaN(Vin) && !isNaN(Vout) && !isNaN(R1) && (Vin - Vout) !== 0) {
-          if (Vin < Vout) {
-            showPhysicsError("Vin must be greater than or equal to Vout.");
-          } else {
-            R2 = R1 * (Vout / (Vin - Vout));
+        if (!isNaN(Vin) && !isNaN(Vout) && !isNaN(R1)) {
+          const denominator = (Vin - Vout) / R1 - Iload;
+          if (denominator <= 0 && Vout > 0) {
+            showPhysicsError("Given load current and R1 drop exceeds input capacity to maintain positive Vout.");
+          } else if (denominator !== 0) {
+            R2 = Vout / denominator;
+            if (R2 < 0) R2 = 0;
             setPhysicsOutput("R2", R2);
           }
-        } else if (Vin === Vout) {
-          showPhysicsError("Vin cannot equal Vout when solving for R2.");
+        }
+      } else if (targetId === "Iload") {
+        if (!isNaN(Vin) && !isNaN(Vout) && !isNaN(R1) && !isNaN(R2) && R1 > 0 && R2 > 0) {
+          Iload = (Vin - Vout) / R1 - Vout / R2;
+          setPhysicsOutput("Iload", Iload);
         }
       }
     }
@@ -375,47 +402,147 @@ document.addEventListener("DOMContentLoaded", () => {
       return fallback;
     }
 
+    function getNumericValue(id) {
+      const input = document.getElementById(`phy-${id}`);
+      const select = document.getElementById(`phy-unit-${id}`);
+      if (!input || !select || input.value.trim() === "") return NaN;
+      return parseFloat(input.value) * parseFloat(select.value);
+    }
+
+    const Vin = getNumericValue("Vin");
+    const Vout = getNumericValue("Vout");
+    const R1 = getNumericValue("R1");
+    const R2 = getNumericValue("R2");
+    const Iload = getNumericValue("Iload");
+
     const vinDisp = getDisplayVal("Vin", "Vin");
     const voutDisp = getDisplayVal("Vout", "Vout");
     const r1Disp = getDisplayVal("R1", "R1");
     const r2Disp = getDisplayVal("R2", "R2");
 
+    let vr1Str = "--";
+    let vr2Str = "--";
+    let i1Str = "--";
+    let i2Str = "--";
+    let iloadStr = "0 mA";
+
+    let hasI1 = false;
+    let hasI2 = false;
+    let hasIload = false;
+
+    let dur1 = 1.5;
+    let dur2 = 1.5;
+    let durLoad = 1.5;
+
+    if (!isNaN(Vin) && !isNaN(Vout)) {
+      vr1Str = `${(Vin - Vout).toFixed(2).replace(/\.00$/, "")} V`;
+      vr2Str = `${Vout.toFixed(2).replace(/\.00$/, "")} V`;
+      
+      if (!isNaN(R1) && R1 > 0) {
+        const i1Val = (Vin - Vout) / R1;
+        i1Str = i1Val >= 0.001 ? `${(i1Val * 1000).toFixed(2).replace(/\.00$/, "")} mA` : `${(i1Val * 1e6).toFixed(2).replace(/\.00$/, "")} µA`;
+        hasI1 = i1Val > 1e-6;
+        dur1 = Math.max(0.2, Math.min(3.0, 0.015 / i1Val));
+      }
+      if (!isNaN(R2) && R2 > 0) {
+        const i2Val = Vout / R2;
+        i2Str = i2Val >= 0.001 ? `${(i2Val * 1000).toFixed(2).replace(/\.00$/, "")} mA` : `${(i2Val * 1e6).toFixed(2).replace(/\.00$/, "")} µA`;
+        hasI2 = i2Val > 1e-6;
+        dur2 = Math.max(0.2, Math.min(3.0, 0.015 / i2Val));
+      }
+    }
+
+    if (!isNaN(Iload)) {
+      iloadStr = Iload >= 0.001 ? `${(Iload * 1000).toFixed(2).replace(/\.00$/, "")} mA` : `${(Iload * 1e6).toFixed(2).replace(/\.00$/, "")} µA`;
+      hasIload = Iload > 1e-6;
+      durLoad = Math.max(0.2, Math.min(3.0, 0.015 / Iload));
+    }
+
+    let flowsHtml = "";
+    if (hasI1) {
+      flowsHtml += `<path d="M 40 30 L 100 30 L 100 45" class="flow-line" style="animation-duration: ${dur1}s;" />`;
+      flowsHtml += `<path d="M 100 85 L 100 105" class="flow-line" style="animation-duration: ${dur1}s;" />`;
+    }
+    if (hasI2) {
+      flowsHtml += `<path d="M 100 105 L 100 125" class="flow-line-slow" style="animation-duration: ${dur2}s;" />`;
+      flowsHtml += `<path d="M 100 165 L 100 185" class="flow-line-slow" style="animation-duration: ${dur2}s;" />`;
+    }
+    if (hasIload) {
+      flowsHtml += `<path d="M 100 105 L 180 105" class="flow-line-load" style="animation-duration: ${durLoad}s;" />`;
+    }
+
     dividerCircuit.innerHTML = `
-      <svg width="240" height="200" viewBox="0 0 240 200" style="display:block; margin:0 auto;">
-        <!-- Vin Terminal and wire -->
-        <circle cx="40" cy="30" r="4" fill="var(--accent-purple)" />
-        <text x="35" y="20" fill="var(--text-secondary)" font-family="sans-serif" font-size="10" font-weight="600" text-anchor="middle">Input</text>
-        <text x="35" y="44" fill="var(--accent-purple)" font-family="monospace" font-size="9" font-weight="bold" text-anchor="middle">${vinDisp}</text>
-        <line x1="40" y1="30" x2="100" y2="30" stroke="#64748b" stroke-width="2" />
-        <line x1="100" y1="30" x2="100" y2="45" stroke="#64748b" stroke-width="2" />
+      <svg width="250" height="210" viewBox="0 0 250 210" style="display:block; margin:0 auto;">
+        <style>
+          @keyframes dash {
+            to {
+              stroke-dashoffset: -20;
+            }
+          }
+          .flow-line, .flow-line-slow, .flow-line-load {
+            stroke: #a78bfa;
+            stroke-width: 2.5;
+            stroke-dasharray: 4, 6;
+            animation: dash 1s linear infinite;
+            fill: none;
+            stroke-linecap: round;
+          }
+          .flow-line-slow {
+            stroke: #10b981;
+          }
+          .flow-line-load {
+            stroke: #ef4444;
+          }
+        </style>
 
-        <!-- Resistor R1 -->
-        <g>
-          <rect x="92" y="45" width="16" height="40" rx="2" fill="#111827" stroke="var(--accent-purple)" stroke-width="2" />
-          <text x="80" y="65" fill="var(--text-secondary)" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="end">R1</text>
-          <text x="80" y="77" fill="var(--accent-purple)" font-family="monospace" font-size="8.5" font-weight="bold" text-anchor="end">${r1Disp}</text>
-        </g>
-        <line x1="100" y1="85" x2="100" y2="125" stroke="#64748b" stroke-width="2" />
-
-        <!-- Node & Vout Terminal -->
-        <circle cx="100" cy="105" r="3" fill="#64748b" />
-        <line x1="100" y1="105" x2="180" y2="105" stroke="#64748b" stroke-width="2" />
-        <circle cx="180" cy="105" r="4" fill="var(--accent-purple)" />
-        <text x="185" y="95" fill="var(--text-secondary)" font-family="sans-serif" font-size="10" font-weight="600">Output</text>
-        <text x="185" y="119" fill="var(--accent-purple)" font-family="monospace" font-size="9" font-weight="bold">${voutDisp}</text>
-
-        <!-- Resistor R2 -->
-        <g>
-          <rect x="92" y="125" width="16" height="40" rx="2" fill="#111827" stroke="var(--accent-purple)" stroke-width="2" />
-          <text x="80" y="145" fill="var(--text-secondary)" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="end">R2</text>
-          <text x="80" y="157" fill="var(--accent-purple)" font-family="monospace" font-size="8.5" font-weight="bold" text-anchor="end">${r2Disp}</text>
-        </g>
-        <line x1="100" y1="165" x2="100" y2="185" stroke="#64748b" stroke-width="2" />
+        <!-- Background wire lines -->
+        <line x1="40" y1="30" x2="100" y2="30" stroke="#334155" stroke-width="2.5" />
+        <line x1="100" y1="30" x2="100" y2="45" stroke="#334155" stroke-width="2.5" />
+        <line x1="100" y1="85" x2="100" y2="125" stroke="#334155" stroke-width="2.5" />
+        <line x1="100" y1="105" x2="180" y2="105" stroke="#334155" stroke-width="2.5" />
+        <line x1="100" y1="165" x2="100" y2="185" stroke="#334155" stroke-width="2.5" />
 
         <!-- Ground connection -->
         <line x1="88" y1="185" x2="112" y2="185" stroke="#64748b" stroke-width="2" />
         <line x1="92" y1="189" x2="108" y2="189" stroke="#64748b" stroke-width="1.5" />
         <line x1="96" y1="193" x2="104" y2="193" stroke="#64748b" stroke-width="1" />
+
+        <!-- Animated Current Flows -->
+        ${flowsHtml}
+
+        <!-- Vin Terminal -->
+        <circle cx="40" cy="30" r="4.5" fill="var(--accent-purple)" stroke="#1e1b4b" stroke-width="1.5" />
+        <text x="35" y="18" fill="var(--text-secondary)" font-family="sans-serif" font-size="9" font-weight="600" text-anchor="middle">Input</text>
+        <text x="35" y="42" fill="var(--accent-purple)" font-family="monospace" font-size="9.5" font-weight="bold" text-anchor="middle">${vinDisp}</text>
+
+        <!-- Resistor R1 -->
+        <g>
+          <rect x="92" y="45" width="16" height="40" rx="2" fill="#0f172a" stroke="var(--accent-purple)" stroke-width="2" />
+          <text x="82" y="60" fill="var(--text-secondary)" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="end">R1</text>
+          <text x="82" y="72" fill="var(--text-muted)" font-family="monospace" font-size="8" text-anchor="end">${r1Disp}</text>
+          
+          <!-- Voltage Drop and Current on R1 -->
+          <text x="114" y="60" fill="#a78bfa" font-family="sans-serif" font-size="8.5" font-weight="bold" text-anchor="start">VR1 = ${vr1Str}</text>
+          <text x="114" y="72" fill="var(--text-secondary)" font-family="monospace" font-size="8" text-anchor="start">I1 = ${i1Str}</text>
+        </g>
+
+        <!-- Node & Vout Terminal -->
+        <circle cx="100" cy="105" r="4" fill="#cbd5e1" stroke="#0f172a" stroke-width="1.5" />
+        <circle cx="180" cy="105" r="4.5" fill="var(--accent-purple)" stroke="#1e1b4b" stroke-width="1.5" />
+        <text x="186" y="93" fill="var(--text-secondary)" font-family="sans-serif" font-size="9" font-weight="600">Output</text>
+        <text x="186" y="117" fill="var(--accent-purple)" font-family="monospace" font-size="9.5" font-weight="bold">${voutDisp}</text>
+        <text x="186" y="129" fill="#ef4444" font-family="monospace" font-size="8" font-weight="bold">Load = ${iloadStr}</text>
+
+        <!-- Resistor R2 -->
+        <g>
+          <rect x="92" y="125" width="16" height="40" rx="2" fill="#0f172a" stroke="var(--accent-purple)" stroke-width="2" />
+          <text x="82" y="140" fill="var(--text-secondary)" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="end">R2</text>
+          <text x="82" y="152" fill="var(--text-muted)" font-family="monospace" font-size="8" text-anchor="end">${r2Disp}</text>
+
+          <!-- Voltage Drop and Current on R2 -->
+          <text x="114" y="140" fill="#10b981" font-family="sans-serif" font-size="8.5" font-weight="bold" text-anchor="start">VR2 = ${vr2Str}</text>
+          <text x="114" y="152" fill="var(--text-secondary)" font-family="monospace" font-size="8" text-anchor="start">I2 = ${i2Str}</text>
+        </g>
       </svg>
     `;
   }

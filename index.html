@@ -87,16 +87,16 @@
       <div class="dmm-dial-area">
         <!-- Circular markings around the selector knob -->
         <div class="dmm-dial-labels">
-          <div class="dial-mark" style="transform: rotate(-160deg) translateY(-60px);"><span class="dial-label" data-angle="-160">TRIP</span></div>
-          <div class="dial-mark" style="transform: rotate(-120deg) translateY(-60px);"><span class="dial-label" data-angle="-120">OFF</span></div>
-          <div class="dial-mark" style="transform: rotate(-80deg) translateY(-60px);"><span class="dial-label" data-angle="-80">Ω</span></div>
-          <div class="dial-mark" style="transform: rotate(-40deg) translateY(-60px);"><span class="dial-label" data-angle="-40">F</span></div>
-          <div class="dial-mark" style="transform: rotate(0deg) translateY(-60px);"><span class="dial-label" data-angle="0">H</span></div>
-          <div class="dial-mark" style="transform: rotate(40deg) translateY(-60px);"><span class="dial-label" data-angle="40">LED</span></div>
-          <div class="dial-mark" style="transform: rotate(80deg) translateY(-60px);"><span class="dial-label" data-angle="80">LAW</span></div>
-          <div class="dial-mark" style="transform: rotate(120deg) translateY(-60px);"><span class="dial-label" data-angle="120">SUB</span></div>
-          <div class="dial-mark" style="transform: rotate(160deg) translateY(-60px);"><span class="dial-label" data-angle="160">CHECK</span></div>
-          <div class="dial-mark" style="transform: rotate(180deg) translateY(-60px);"><span class="dial-label" data-angle="180">CONT</span></div>
+          <div class="dial-mark" style="transform: rotate(-162deg) translateY(-80px);"><span class="dial-label" data-angle="-162">TRIP</span></div>
+          <div class="dial-mark" style="transform: rotate(-126deg) translateY(-80px);"><span class="dial-label" data-angle="-126">OFF</span></div>
+          <div class="dial-mark" style="transform: rotate(-90deg) translateY(-80px);"><span class="dial-label" data-angle="-90">Ω</span></div>
+          <div class="dial-mark" style="transform: rotate(-54deg) translateY(-80px);"><span class="dial-label" data-angle="-54">F</span></div>
+          <div class="dial-mark" style="transform: rotate(-18deg) translateY(-80px);"><span class="dial-label" data-angle="-18">H</span></div>
+          <div class="dial-mark" style="transform: rotate(18deg) translateY(-80px);"><span class="dial-label" data-angle="18">LED</span></div>
+          <div class="dial-mark" style="transform: rotate(54deg) translateY(-80px);"><span class="dial-label" data-angle="54">LAW</span></div>
+          <div class="dial-mark" style="transform: rotate(90deg) translateY(-80px);"><span class="dial-label" data-angle="90">SUB</span></div>
+          <div class="dial-mark" style="transform: rotate(126deg) translateY(-80px);"><span class="dial-label" data-angle="126">CHECK</span></div>
+          <div class="dial-mark" style="transform: rotate(162deg) translateY(-80px);"><span class="dial-label" data-angle="162">CONT</span></div>
         </div>
         
         <div class="dmm-knob-container">
@@ -371,6 +371,34 @@
                   </label>
                 </div>
               </div>
+
+              <!-- Vin and Load Current Inputs -->
+              <div style="background:rgba(255,255,255,0.01); border:1px solid var(--card-border); border-radius:12px; padding:1rem; margin-bottom:1.5rem;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+                  <div class="form-group">
+                    <label for="combo-vin" style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">Input Voltage (Vin)</label>
+                    <div style="display:flex; gap:0.25rem; margin-top:0.25rem;">
+                      <input type="number" id="combo-vin" class="form-input" placeholder="e.g. 12" value="12" style="width:0; flex:1; padding:0.5rem;">
+                      <select id="combo-vin-unit" class="form-select" style="width:55px; padding:0.5rem 0.25rem; min-width:0;">
+                        <option value="1">V</option>
+                        <option value="0.001">mV</option>
+                        <option value="1000">kV</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label for="combo-iload" style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">Load Current</label>
+                    <div style="display:flex; gap:0.25rem; margin-top:0.25rem;">
+                      <input type="number" id="combo-iload" class="form-input" placeholder="e.g. 100" value="0" style="width:0; flex:1; padding:0.5rem;">
+                      <select id="combo-iload-unit" class="form-select" style="width:60px; padding:0.5rem 0.25rem; min-width:0;">
+                        <option value="0.001">mA</option>
+                        <option value="1">A</option>
+                        <option value="0.000001">µA</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
               
               <div id="combination-resistors-list" style="display:flex; flex-direction:column; gap:0.75rem; margin-bottom:1.25rem;">
                 <!-- Dynamically populated rows -->
@@ -380,9 +408,15 @@
                 + Add Resistor Input
               </button>
 
-              <div class="calc-result-box" style="background:rgba(16, 185, 129, 0.05); border-color:rgba(16, 185, 129, 0.2)">
-                <span class="calc-result-title" style="color:var(--accent-green);">Equivalent Resistance (Req)</span>
-                <span class="calc-result-val" id="combo-result-val">0 Ω</span>
+              <div class="calc-result-box" style="background:rgba(16, 185, 129, 0.05); border-color:rgba(16, 185, 129, 0.2); display:flex; flex-direction:column; gap:0.5rem;">
+                <div>
+                  <span class="calc-result-title" style="color:var(--accent-green); display:block;">Equivalent Resistance (Req)</span>
+                  <span class="calc-result-val" id="combo-result-val">0 Ω</span>
+                </div>
+                <div style="border-top: 1px dashed rgba(16, 185, 129, 0.2); padding-top:0.5rem;">
+                  <span class="calc-result-title" style="color:var(--accent-cyan); display:block;">Output Voltage (Vout)</span>
+                  <span class="calc-result-val" id="combo-result-vout" style="color:var(--accent-cyan);">12.00 V</span>
+                </div>
                 <span class="calc-result-sub" id="combo-result-math">Formula: Req = R1 + R2</span>
               </div>
             </div>
@@ -1182,7 +1216,7 @@
 
                 <!-- 3.5mm TRRS Plug Drawing -->
                 <g transform="translate(10, 50)">
-                  <text x="75" y="-12" fill="#eab308" font-size="9" font-family="monospace" text-anchor="middle" font-weight="700">3.5mm TRRS Plug</text>
+                  <text x="75" y="-36" fill="#eab308" font-size="9" font-family="monospace" text-anchor="middle" font-weight="700">3.5mm TRRS Plug</text>
                   <!-- Jack Tip & Rings -->
                   <rect x="10" y="5" width="22" height="14" rx="2" fill="#cbd5e1" stroke="#94a3b8" />
                   <rect x="35" y="5" width="20" height="14" fill="#cbd5e1" stroke="#94a3b8" />
@@ -1197,11 +1231,17 @@
                   <!-- Cable output -->
                   <rect x="151" y="8" width="15" height="8" rx="2" fill="#334155" />
 
+                  <!-- Guide ticks -->
+                  <line x1="21" y1="4" x2="21" y2="-3" stroke="rgba(148, 163, 184, 0.4)" stroke-width="0.8" />
+                  <line x1="45" y1="4" x2="45" y2="-15" stroke="rgba(148, 163, 184, 0.4)" stroke-width="0.8" />
+                  <line x1="68" y1="4" x2="68" y2="-3" stroke="rgba(16, 185, 129, 0.4)" stroke-width="0.8" />
+                  <line x1="96" y1="4" x2="96" y2="-15" stroke="rgba(239, 68, 68, 0.4)" stroke-width="0.8" />
+
                   <!-- Pin labels -->
-                  <text x="21" y="32" fill="#94a3b8" font-size="8" font-family="monospace" text-anchor="middle">L (Tip)</text>
-                  <text x="45" y="32" fill="#94a3b8" font-size="8" font-family="monospace" text-anchor="middle">R (R1)</text>
-                  <text x="68" y="32" fill="#10b981" font-size="8" font-family="monospace" text-anchor="middle" font-weight="bold">GND (R2)</text>
-                  <text x="96" y="32" fill="#ef4444" font-size="8" font-family="monospace" text-anchor="middle" font-weight="bold">MIC (Slv)</text>
+                  <text x="21" y="-7" fill="#94a3b8" font-size="8" font-family="monospace" text-anchor="middle">L (Tip)</text>
+                  <text x="45" y="-19" fill="#94a3b8" font-size="8" font-family="monospace" text-anchor="middle">R (R1)</text>
+                  <text x="68" y="-7" fill="#10b981" font-size="8" font-family="monospace" text-anchor="middle" font-weight="bold">GND (R2)</text>
+                  <text x="96" y="-19" fill="#ef4444" font-size="8" font-family="monospace" text-anchor="middle" font-weight="bold">MIC (Slv)</text>
                 </g>
 
                 <!-- Wiring lines -->

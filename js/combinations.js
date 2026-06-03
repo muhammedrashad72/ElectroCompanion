@@ -9,18 +9,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // State
   let comboResistors = [
-    { id: 1, val: 100, valStr: "100" },
-    { id: 2, val: 220, valStr: "220" }
+    { id: 1, val: 100, valStr: "100", multiplier: 1 },
+    { id: 2, val: 220, valStr: "220", multiplier: 1 }
   ];
   let nextResistorId = 3;
   let comboMode = "series";
 
   // Parse suffix value (e.g. 1.2k -> 1200)
-  function parseValueToOhms(str) {
+  function parseValueToOhms(str, selectMultiplier = 1) {
     let cleaned = str.toLowerCase().trim().replace(/ohm[s]?|Ω/g, "").trim();
     if (!cleaned) return null;
 
-    let multiplier = 1;
+    let multiplier = selectMultiplier;
     let base = cleaned;
 
     if (cleaned.includes('k')) {
@@ -60,6 +60,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const row = document.createElement("div");
       row.className = "form-group";
       row.style.display = "flex";
+      row.style.flexDirection = "row";
       row.style.gap = "0.5rem";
       row.style.alignItems = "center";
       row.setAttribute("data-id", res.id);
@@ -79,12 +80,50 @@ document.addEventListener("DOMContentLoaded", () => {
 
       input.addEventListener("input", (e) => {
         res.valStr = e.target.value;
-        res.val = parseValueToOhms(res.valStr);
+        res.val = parseValueToOhms(res.valStr, res.multiplier);
+        window.calculateCombinations();
+      });
+
+      const select = document.createElement("select");
+      select.className = "form-select";
+      select.style.width = "75px";
+      select.style.padding = "0.5rem";
+      select.style.background = "rgba(15, 23, 42, 0.6)";
+      select.style.border = "1px solid var(--card-border)";
+      select.style.borderRadius = "10px";
+      select.style.color = "var(--text-primary)";
+      select.style.outline = "none";
+      select.style.fontSize = "0.85rem";
+      select.style.cursor = "pointer";
+
+      const optOhms = document.createElement("option");
+      optOhms.value = "1";
+      optOhms.textContent = "Ω";
+      if (res.multiplier === 1) optOhms.selected = true;
+
+      const optK = document.createElement("option");
+      optK.value = "1000";
+      optK.textContent = "kΩ";
+      if (res.multiplier === 1000) optK.selected = true;
+
+      const optM = document.createElement("option");
+      optM.value = "1000000";
+      optM.textContent = "MΩ";
+      if (res.multiplier === 1000000) optM.selected = true;
+
+      select.appendChild(optOhms);
+      select.appendChild(optK);
+      select.appendChild(optM);
+
+      select.addEventListener("change", (e) => {
+        res.multiplier = parseFloat(e.target.value);
+        res.val = parseValueToOhms(res.valStr, res.multiplier);
         window.calculateCombinations();
       });
 
       row.appendChild(label);
       row.appendChild(input);
+      row.appendChild(select);
 
       // Show remove button only if there are more than 2 resistors
       if (comboResistors.length > 2) {
@@ -114,6 +153,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!schematicContainer) return;
     schematicContainer.innerHTML = "";
 
+    const vinInput = document.getElementById("combo-vin");
+    const vinUnit = document.getElementById("combo-vin-unit");
+    const iloadInput = document.getElementById("combo-iload");
+    const iloadUnit = document.getElementById("combo-iload-unit");
+
+    const Vin = parseFloat(vinInput ? vinInput.value : 0) * parseFloat(vinUnit ? vinUnit.value : 1);
+    const Iload = parseFloat(iloadInput ? iloadInput.value : 0) * parseFloat(iloadUnit ? iloadUnit.value : 0.001);
+
     const activeResistors = comboResistors.map((r, i) => ({
       name: `R${i + 1}`,
       displayVal: r.valStr ? (r.val !== null ? formatValue(r.val) : r.valStr) : "0 Ω",
@@ -124,6 +171,26 @@ document.addEventListener("DOMContentLoaded", () => {
     if (N === 0) return;
 
     let svgHtml = "";
+    
+    // Animation style
+    const styleHtml = `
+      <style>
+        @keyframes dash {
+          to {
+            stroke-dashoffset: -20;
+          }
+        }
+        .combo-flow-line {
+          stroke: #10b981;
+          stroke-width: 2.5;
+          stroke-dasharray: 4, 6;
+          animation: dash 1.5s linear infinite;
+          fill: none;
+          stroke-linecap: round;
+        }
+      </style>
+    `;
+
     if (comboMode === "series") {
       // --- Series Schematic Drawing (Horizontal Chain) ---
       const totalWidth = 360;
@@ -132,36 +199,69 @@ document.addEventListener("DOMContentLoaded", () => {
       const rHeight = 22;
 
       svgHtml = `<svg width="100%" height="100%" viewBox="0 0 ${totalWidth} ${height}">`;
-      
-      // Wire leads connection ends
-      svgHtml += `<circle cx="15" cy="90" r="4" fill="var(--accent-green)" />`;
-      svgHtml += `<circle cx="345" cy="90" r="4" fill="var(--accent-green)" />`;
-      svgHtml += `<line x1="15" x2="35" y1="90" y2="90" stroke="#64748b" stroke-width="2" />`;
-      svgHtml += `<line x1="325" x2="345" y1="90" y2="90" stroke="#64748b" stroke-width="2" />`;
+      svgHtml += styleHtml;
 
-      // Draw horizontal ladder blocks
       const startX = 35;
       const endX = 325;
       const spaceTotal = (endX - startX) - (N * rWidth);
       const gap = spaceTotal / (N - 1 || 1);
 
+      // Total series Req
+      const req = activeResistors.reduce((sum, r) => sum + r.val, 0);
+      let voutVal = Vin - Iload * req;
+      if (voutVal < 0) voutVal = 0;
+
+      // Draw horizontal background wire lines
+      svgHtml += `<line x1="15" x2="345" y1="90" y2="90" stroke="#334155" stroke-width="2.5" />`;
+
+      // Draw current flow line if Iload > 0
+      if (Iload > 0 && Vin > 0) {
+        const dur = Math.max(0.2, Math.min(3.0, 0.015 / Iload));
+        svgHtml += `<path d="M 15 90 L 345 90" class="combo-flow-line" style="animation-duration: ${dur}s;" />`;
+      }
+
+      // Wire leads connection ends
+      svgHtml += `<circle cx="15" cy="90" r="4.5" fill="var(--accent-green)" stroke="#064e3b" stroke-width="1" />`;
+      svgHtml += `<circle cx="345" cy="90" r="4.5" fill="var(--accent-green)" stroke="#064e3b" stroke-width="1" />`;
+      
+      // Node voltage texts
+      svgHtml += `<text x="15" y="112" fill="var(--text-secondary)" font-family="monospace" font-size="8" text-anchor="middle">Vin: ${Vin.toFixed(1)}V</text>`;
+      svgHtml += `<text x="345" y="112" fill="var(--accent-cyan)" font-family="monospace" font-size="8" text-anchor="middle">Vout: ${voutVal.toFixed(1)}V</text>`;
+      svgHtml += `<text x="345" y="124" fill="#ef4444" font-family="monospace" font-size="8" font-weight="bold" text-anchor="middle">Load: ${Iload >= 0.001 ? (Iload * 1000).toFixed(1) + 'mA' : (Iload * 1e6).toFixed(0) + 'µA'}</text>`;
+
       let currentX = startX;
+      let currentV = Vin;
+
       for (let i = 0; i < N; i++) {
         const res = activeResistors[i];
         
-        // Draw Resistor Rectangle
+        // Calculate voltage drop
+        const drop = Iload * res.val;
+        currentV -= drop;
+        if (currentV < 0) currentV = 0;
+
+        const dropStr = drop >= 0.001 ? `${drop.toFixed(2).replace(/\.00$/, "")}V` : `${(drop * 1000).toFixed(1)}mV`;
+        const resCurrentStr = Iload >= 0.001 ? `${(Iload * 1000).toFixed(1)}mA` : `${(Iload * 1e6).toFixed(0)}µA`;
+
+        // Draw Resistor Rectangle (this covers the background wire/current dashes!)
         svgHtml += `
           <g>
-            <rect x="${currentX}" y="79" width="${rWidth}" height="${rHeight}" rx="3" fill="#111827" stroke="var(--accent-green)" stroke-width="2" />
+            <rect x="${currentX}" y="79" width="${rWidth}" height="${rHeight}" rx="3" fill="#0f172a" stroke="var(--accent-green)" stroke-width="2" />
             <text x="${currentX + rWidth / 2}" y="70" fill="var(--text-secondary)" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">${res.name}</text>
             <text x="${currentX + rWidth / 2}" y="115" fill="var(--accent-green)" font-family="monospace" font-size="9" font-weight="bold" text-anchor="middle">${res.displayVal}</text>
+            ${Iload > 0 && res.val > 0 ? `
+              <text x="${currentX + rWidth / 2}" y="130" fill="#a78bfa" font-family="monospace" font-size="8" font-weight="bold" text-anchor="middle">Vd: ${dropStr}</text>
+              <text x="${currentX + rWidth / 2}" y="141" fill="var(--text-secondary)" font-family="monospace" font-size="7.5" font-weight="bold" text-anchor="middle">I: ${resCurrentStr}</text>
+            ` : ""}
           </g>
         `;
 
-        // Connection wire to next resistor
+        // Display intermediate voltage if there is a gap and not the last resistor
         if (i < N - 1) {
-          svgHtml += `<line x1="${currentX + rWidth}" x2="${currentX + rWidth + gap}" y1="90" y2="90" stroke="#64748b" stroke-width="2" />`;
+          const juncX = currentX + rWidth + gap / 2;
+          svgHtml += `<text x="${juncX}" y="82" fill="var(--accent-cyan)" font-family="monospace" font-size="8.5" font-weight="bold" text-anchor="middle">${currentV.toFixed(1)}V</text>`;
         }
+
         currentX += rWidth + gap;
       }
 
@@ -175,41 +275,75 @@ document.addEventListener("DOMContentLoaded", () => {
       const leftBusX = 90;
       const rightBusX = 270;
       
-      // Dynamic height based on number of resistors
-      const spacingY = 36;
+      const spacingY = 48;
       const height = Math.max(180, (N + 1) * spacingY);
       const startY = (height - (N - 1) * spacingY) / 2;
 
       svgHtml = `<svg width="100%" height="100%" viewBox="0 0 ${totalWidth} ${height}">`;
+      svgHtml += styleHtml;
 
-      // Input terminals
-      svgHtml += `<circle cx="20" cy="${height / 2}" r="4" fill="var(--accent-green)" />`;
-      svgHtml += `<circle cx="340" cy="${height / 2}" r="4" fill="var(--accent-green)" />`;
+      // Req calculation
+      const reciprocalSum = activeResistors.reduce((sum, r) => sum + (r.val ? 1 / r.val : 0), 0);
+      const req = reciprocalSum > 0 ? 1 / reciprocalSum : 0;
+      let voutVal = Vin - Iload * req;
+      if (voutVal < 0) voutVal = 0;
+
+      // Draw background wires
+      svgHtml += `<line x1="20" x2="${leftBusX}" y1="${height / 2}" y2="${height / 2}" stroke="#334155" stroke-width="2.5" />`;
+      svgHtml += `<line x1="340" x2="${rightBusX}" y1="${height / 2}" y2="${height / 2}" stroke="#334155" stroke-width="2.5" />`;
+      svgHtml += `<line x1="${leftBusX}" x2="${leftBusX}" y1="${startY}" y2="${startY + (N - 1) * spacingY}" stroke="#334155" stroke-width="2.5" stroke-linecap="round" />`;
+      svgHtml += `<line x1="${rightBusX}" x2="${rightBusX}" y1="${startY}" y2="${startY + (N - 1) * spacingY}" stroke="#334155" stroke-width="2.5" stroke-linecap="round" />`;
+
+      for (let i = 0; i < N; i++) {
+        const y = startY + i * spacingY;
+        svgHtml += `<line x1="${leftBusX}" x2="${rightBusX}" y1="${y}" y2="${y}" stroke="#334155" stroke-width="2" />`;
+      }
+
+      // Draw animations if Iload > 0
+      if (Iload > 0 && Vin > 0) {
+        const vDiff = Vin - voutVal;
+        for (let i = 0; i < N; i++) {
+          const res = activeResistors[i];
+          const y = startY + i * spacingY;
+          if (res.val > 0) {
+            const iBranch = vDiff / res.val;
+            if (iBranch > 1e-6) {
+              const durBranch = Math.max(0.2, Math.min(3.0, 0.015 / iBranch));
+              // Continuous flowing path for this parallel branch
+              svgHtml += `<path d="M 20 ${height / 2} L ${leftBusX} ${height / 2} L ${leftBusX} ${y} L ${rightBusX} ${y} L ${rightBusX} ${height / 2} L 340 ${height / 2}" class="combo-flow-line" style="animation-duration: ${durBranch}s; opacity: 0.65;" />`;
+            }
+          }
+        }
+      }
+
+      // Terminals
+      svgHtml += `<circle cx="20" cy="${height / 2}" r="4.5" fill="var(--accent-green)" stroke="#064e3b" stroke-width="1" />`;
+      svgHtml += `<circle cx="340" cy="${height / 2}" r="4.5" fill="var(--accent-green)" stroke="#064e3b" stroke-width="1" />`;
       
-      // Main input wires to the vertical buses
-      svgHtml += `<line x1="20" x2="${leftBusX}" y1="${height / 2}" y2="${height / 2}" stroke="#64748b" stroke-width="2" />`;
-      svgHtml += `<line x1="340" x2="${rightBusX}" y1="${height / 2}" y2="${height / 2}" stroke="#64748b" stroke-width="2" />`;
+      svgHtml += `<text x="20" y="${height / 2 + 15}" fill="var(--text-secondary)" font-family="monospace" font-size="8" text-anchor="middle">Vin: ${Vin.toFixed(1)}V</text>`;
+      svgHtml += `<text x="340" y="${height / 2 + 15}" fill="var(--accent-cyan)" font-family="monospace" font-size="8" text-anchor="middle">Vout: ${voutVal.toFixed(1)}V</text>`;
+      svgHtml += `<text x="340" y="${height / 2 + 27}" fill="#ef4444" font-family="monospace" font-size="8" font-weight="bold" text-anchor="middle">Load: ${Iload >= 0.001 ? (Iload * 1000).toFixed(1) + 'mA' : (Iload * 1e6).toFixed(0) + 'µA'}</text>`;
 
-      // Draw Vertical Bus Bars
-      svgHtml += `<line x1="${leftBusX}" x2="${leftBusX}" y1="${startY}" y2="${startY + (N - 1) * spacingY}" stroke="#64748b" stroke-width="2" stroke-linecap="round" />`;
-      svgHtml += `<line x1="${rightBusX}" x2="${rightBusX}" y1="${startY}" y2="${startY + (N - 1) * spacingY}" stroke="#64748b" stroke-width="2" stroke-linecap="round" />`;
-
-      // Draw branches
+      // Draw Resistors over flows
       for (let i = 0; i < N; i++) {
         const res = activeResistors[i];
         const y = startY + i * spacingY;
-
-        // branch horizontal wires
-        svgHtml += `<line x1="${leftBusX}" x2="${leftBusX + (rightBusX - leftBusX - rWidth) / 2}" y1="${y}" y2="${y}" stroke="#64748b" stroke-width="2" />`;
-        svgHtml += `<line x1="${rightBusX - (rightBusX - leftBusX - rWidth) / 2}" x2="${rightBusX}" y1="${y}" y2="${y}" stroke="#64748b" stroke-width="2" />`;
-
-        // Resistor body
         const rx = leftBusX + (rightBusX - leftBusX - rWidth) / 2;
+
+        const vDiff = Vin - voutVal;
+        const vDiffStr = vDiff >= 0.001 ? `${vDiff.toFixed(2).replace(/\.00$/, "")}V` : `${(vDiff * 1000).toFixed(1)}mV`;
+        const iBranch = res.val > 0 ? vDiff / res.val : 0;
+        const iBranchStr = iBranch >= 0.001 ? `${(iBranch * 1000).toFixed(1)}mA` : `${(iBranch * 1e6).toFixed(0)}µA`;
+
         svgHtml += `
           <g>
-            <rect x="${rx}" y="${y - rHeight / 2}" width="${rWidth}" height="${rHeight}" rx="3" fill="#111827" stroke="var(--accent-green)" stroke-width="2" />
+            <rect x="${rx}" y="${y - rHeight / 2}" width="${rWidth}" height="${rHeight}" rx="3" fill="#0f172a" stroke="var(--accent-green)" stroke-width="2" />
             <text x="${rx + rWidth / 2}" y="${y - rHeight / 2 - 4}" fill="var(--text-secondary)" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">${res.name}</text>
-            <text x="${rx + rWidth / 2}" y="${y + 4}" fill="var(--accent-green)" font-family="monospace" font-size="8.5" font-weight="bold" text-anchor="middle">${res.displayVal}</text>
+            <text x="${rx + rWidth / 2}" y="${y + 3}" fill="var(--accent-green)" font-family="monospace" font-size="8.5" font-weight="bold" text-anchor="middle">${res.displayVal}</text>
+            ${Iload > 0 && res.val > 0 ? `
+              <text x="${rx + rWidth / 2}" y="${y + 13}" fill="var(--accent-cyan)" font-family="monospace" font-size="7" font-weight="bold" text-anchor="middle">Ib: ${iBranchStr}</text>
+              <text x="${rx + rWidth / 2}" y="${y + 22}" fill="#a78bfa" font-family="monospace" font-size="7" font-weight="bold" text-anchor="middle">Vd: ${vDiffStr}</text>
+            ` : ""}
           </g>
         `;
       }
@@ -231,8 +365,18 @@ document.addEventListener("DOMContentLoaded", () => {
     let req = 0;
     let mathStr = "";
 
+    const vinInput = document.getElementById("combo-vin");
+    const vinUnit = document.getElementById("combo-vin-unit");
+    const iloadInput = document.getElementById("combo-iload");
+    const iloadUnit = document.getElementById("combo-iload-unit");
+    const resultVout = document.getElementById("combo-result-vout");
+
+    const Vin = parseFloat(vinInput ? vinInput.value : 0) * parseFloat(vinUnit ? vinUnit.value : 1);
+    const Iload = parseFloat(iloadInput ? iloadInput.value : 0) * parseFloat(iloadUnit ? iloadUnit.value : 0.001);
+
     if (activeResistors.length === 0) {
       resultVal.textContent = "0.00 Ω";
+      if (resultVout) resultVout.textContent = "0.00 V";
       resultMath.textContent = "Please enter positive resistor values.";
       if (window.currentView === "resistor-view" && typeof window.updateDmmLcd === "function") {
         window.updateDmmLcd("0.0", "Ω", "REQ COMBINATION");
@@ -243,21 +387,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (mode === "series") {
       req = activeResistors.reduce((sum, val) => sum + val, 0);
-      
       const valuesStr = activeResistors.map(v => formatValue(v)).join(" + ");
       mathStr = `Req = R1 + R2 + ... = ${valuesStr} = ${formatValue(req)}`;
     } 
     else {
-      // Parallel calculation: Req = 1 / (1/R1 + 1/R2 + ...)
       const reciprocalSum = activeResistors.reduce((sum, val) => sum + (1 / val), 0);
       req = 1 / reciprocalSum;
-
       const reciprocalTerms = activeResistors.map(v => `1/${formatValue(v)}`).join(" + ");
       mathStr = `Req = 1 / (${reciprocalTerms}) = 1 / (${reciprocalSum.toExponential(4)}) = ${formatValue(req)}`;
     }
 
+    let vout = Vin - Iload * req;
+    if (vout < 0) vout = 0;
+
     const formatted = formatValue(req);
     resultVal.textContent = formatted;
+    if (resultVout) {
+      resultVout.textContent = `${vout.toFixed(2)} V`;
+    }
+    
+    // Add loaded info to math text
+    if (Iload > 0) {
+      mathStr += ` | Loaded Vout = Vin - Iload * Req = ${Vin}V - ${(Iload * 1000).toFixed(1)}mA * ${formatted} = ${vout.toFixed(2)}V`;
+    }
+
     resultMath.textContent = mathStr;
 
     // Update Multimeter LCD screen
@@ -278,6 +431,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // Event listeners for Vin and Iload
+  const vinInput = document.getElementById("combo-vin");
+  const vinUnit = document.getElementById("combo-vin-unit");
+  const iloadInput = document.getElementById("combo-iload");
+  const iloadUnit = document.getElementById("combo-iload-unit");
+
+  if (vinInput) vinInput.addEventListener("input", window.calculateCombinations);
+  if (vinUnit) vinUnit.addEventListener("change", window.calculateCombinations);
+  if (iloadInput) iloadInput.addEventListener("input", window.calculateCombinations);
+  if (iloadUnit) iloadUnit.addEventListener("change", window.calculateCombinations);
+
   // Add resistor row trigger
   if (btnAddResistor) {
     btnAddResistor.addEventListener("click", () => {
@@ -285,7 +449,8 @@ document.addEventListener("DOMContentLoaded", () => {
       comboResistors.push({
         id: nextResistorId++,
         val: null,
-        valStr: ""
+        valStr: "",
+        multiplier: 1
       });
       renderResistorRows();
       window.calculateCombinations();

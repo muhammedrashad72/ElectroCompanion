@@ -1,4 +1,4 @@
-const CACHE_NAME = "electrocompanion-cache-v2";
+const CACHE_NAME = "electrocompanion-cache-v4";
 const ASSETS = [
   "./",
   "./index.html",
