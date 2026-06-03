@@ -1,4 +1,4 @@
-const CACHE_NAME = "electrocompanion-cache-v1";
+const CACHE_NAME = "electrocompanion-cache-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -16,7 +16,8 @@ const ASSETS = [
   "./js/led.js",
   "./js/physics.js",
   "./js/substitutes.js",
-  "./js/rccb.js"
+  "./js/rccb.js",
+  "./js/continuity.js"
 ];
 
 // Install event - caching assets

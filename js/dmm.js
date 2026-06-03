@@ -27,6 +27,11 @@ document.addEventListener("DOMContentLoaded", () => {
         window.stopSimulation();
       }
     }
+    if (window.currentView === "continuity-view" && viewId !== "continuity-view") {
+      if (typeof window.stopContinuityTester === "function") {
+        window.stopContinuityTester();
+      }
+    }
     const views = document.querySelectorAll(".view-section");
     views.forEach(view => {
       view.classList.remove("active");
@@ -48,7 +53,8 @@ document.addEventListener("DOMContentLoaded", () => {
     { angle: 40, view: "led-view", name: "LED TEST" },
     { angle: 80, view: "laws-view", name: "PHYSICS LAW" },
     { angle: 120, view: "substitutes-view", name: "ALT DIODE/TR" },
-    { angle: 160, view: "checking-view", name: "COMP CHECKING" }
+    { angle: 160, view: "checking-view", name: "COMP CHECKING" },
+    { angle: 180, view: "continuity-view", name: "AUDIO CONT" }
   ];
 
   // Sound and Haptics
@@ -163,6 +169,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if (typeof window.initRccbGuide === "function") {
         window.initRccbGuide();
       }
+    } else if (mode.view === "continuity-view") {
+      window.updateDmmLcd("CoNt", "", "AUDIO CONTINUITY");
+      if (typeof window.initContinuityTester === "function") {
+        window.initContinuityTester();
+      }
     }
   }
 
@@ -206,15 +217,22 @@ document.addEventListener("DOMContentLoaded", () => {
     
     let angle = getAngle(clientX, clientY, cx, cy);
     
-    // Constraint clamping for -160 to 160
-    if (angle < -160) angle = -160;
-    if (angle > 160) angle = 160;
+    // The dial ranges from -160 to 180 degrees.
+    // The "forbidden zone" is from -180 to -160.
+    if (angle < -160) {
+      if (angle < -170) {
+        angle = 180;
+      } else {
+        angle = -160;
+      }
+    }
     
     let closestMode = DIAL_MODES[0];
     let minDiff = Infinity;
     
     DIAL_MODES.forEach(mode => {
-      const diff = Math.abs(angle - mode.angle);
+      let diff = Math.abs(angle - mode.angle);
+      if (diff > 180) diff = 360 - diff; // circular difference
       if (diff < minDiff) {
         minDiff = diff;
         closestMode = mode;
