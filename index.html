@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ElectroCompanion - Quick Electronic Reference & Tools</title>
+  <meta name="description" content="A premium utility helper for electrical engineers and electronics enthusiasts. Lookup datasheets, calculate resistor bands, decode capacitors, and check pinouts.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <script>
+    // PWA Service Worker Registration
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(reg => console.log('Service Worker registered successfully!', reg.scope))
+          .catch(err => console.error('Service Worker registration failed:', err));
+      });
+    }
+
+    // Safe dynamic error logging (guards against infinite recursion on network failure)
+    let isLoggingError = false;
+    window.onerror = function(msg, url, line, col, error) {
+      if (isLoggingError) return;
+      isLoggingError = true;
+      const errorServerUrl = 'http://' + window.location.hostname + ':8001/log-error';
+      fetch(errorServerUrl, { method: 'POST', body: msg + ' ' + url + ':' + line + ':' + col })
+        .catch(() => {}) // Catch network failures silently to prevent loops
+        .finally(() => { isLoggingError = false; });
+    };
+    window.onunhandledrejection = function(event) {
+      if (isLoggingError) return;
+      if (event.reason && String(event.reason).includes('log-error')) return;
+      isLoggingError = true;
+      const errorServerUrl = 'http://' + window.location.hostname + ':8001/log-error';
+      fetch(errorServerUrl, { method: 'POST', body: 'Unhandled Promise: ' + event.reason })
+        .catch(() => {}) // Catch network failures silently to prevent loops
+        .finally(() => { isLoggingError = false; });
+    };
+  </script>
+</head>
+<body>
+
+  <!-- APP CONTAINER -->
+  <div class="app-container">
+
+    <!-- SKEUOMORPHIC DIGITAL MULTIMETER -->
+    <aside class="multimeter-body">
+      <div class="dmm-brand">
+        <span class="dmm-brand-name">ElectroCompanion</span>
+        <span class="dmm-model">DMM-8080</span>
+      </div>
+
+      <!-- LCD Screen Container -->
+      <div class="dmm-lcd-case">
+        <div class="dmm-lcd-glass" id="dmm-lcd">
+          <div class="dmm-lcd-header">
+            <span class="dmm-lcd-indicator">AUTO</span>
+            <span class="dmm-lcd-indicator">DC</span>
+            <span class="dmm-lcd-battery">🔋</span>
+          </div>
+          <div class="dmm-lcd-readout">
+            <span id="dmm-main-val">OL</span>
+            <span id="dmm-unit-val" style="font-size: 1.1rem; font-weight: bold; margin-left: 2px;"></span>
+          </div>
+          <div class="dmm-lcd-footer">
+            <span id="dmm-sub-text">OFF MODE</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Physical Action Buttons -->
+      <div class="dmm-buttons-row">
+        <button class="dmm-phys-btn" id="btn-db-search" title="Database Component Search">
+          <span class="btn-cap"></span>
+          <span class="btn-label">SEARCH</span>
+        </button>
+        <button class="dmm-phys-btn" id="btn-backlight" title="Toggle LCD Backlight Color">
+          <span class="btn-cap"></span>
+          <span class="btn-label">LIGHT</span>
+        </button>
+      </div>
+
+      <!-- Rotary Dial Area -->
+      <div class="dmm-dial-area">
+        <!-- Circular markings around the selector knob -->
+        <div class="dmm-dial-labels">
+          <div class="dial-mark" style="transform: rotate(-160deg) translateY(-60px);"><span class="dial-label" data-angle="-160">TRIP</span></div>
+          <div class="dial-mark" style="transform: rotate(-120deg) translateY(-60px);"><span class="dial-label" data-angle="-120">OFF</span></div>
+          <div class="dial-mark" style="transform: rotate(-80deg) translateY(-60px);"><span class="dial-label" data-angle="-80">Ω</span></div>
+          <div class="dial-mark" style="transform: rotate(-40deg) translateY(-60px);"><span class="dial-label" data-angle="-40">F</span></div>
+          <div class="dial-mark" style="transform: rotate(0deg) translateY(-60px);"><span class="dial-label" data-angle="0">H</span></div>
+          <div class="dial-mark" style="transform: rotate(40deg) translateY(-60px);"><span class="dial-label" data-angle="40">LED</span></div>
+          <div class="dial-mark" style="transform: rotate(80deg) translateY(-60px);"><span class="dial-label" data-angle="80">LAW</span></div>
+          <div class="dial-mark" style="transform: rotate(120deg) translateY(-60px);"><span class="dial-label" data-angle="120">SUB</span></div>
+          <div class="dial-mark" style="transform: rotate(160deg) translateY(-60px);"><span class="dial-label" data-angle="160">CHECK</span></div>
+        </div>
+        
+        <div class="dmm-knob-container">
+          <div class="dmm-knob" id="dmm-knob">
+            <div class="dmm-knob-pointer"></div>
+            <div class="dmm-knob-finger-hole"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input jacks / Socket terminals -->
+      <div class="dmm-jacks-row">
+        <div class="dmm-jack jack-10a">
+          <span class="jack-label">10A</span>
+          <div class="jack-socket"></div>
+        </div>
+        <div class="dmm-jack jack-ma">
+          <span class="jack-label">mA</span>
+          <div class="jack-socket"></div>
+        </div>
+        <div class="dmm-jack jack-com active-probe-black">
+          <span class="jack-label text-black">COM</span>
+          <div class="jack-socket socket-black"></div>
+        </div>
+        <div class="dmm-jack jack-v active-probe-red">
+          <span class="jack-label text-red">VΩHz</span>
+          <div class="jack-socket socket-red"></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT BODY -->
+    <main class="main-content">
+
+      <!-- ==================== VIEW 0: WELCOME VIEW ==================== -->
+      <section id="welcome-view" class="view-section active">
+        <div class="glass-card welcome-card" style="text-align: center; padding: 3rem 1.5rem; max-width: 700px; margin: 1rem auto; --card-glow: var(--accent-cyan-glow);">
+          <div class="welcome-dmm-graphic">
+            <svg viewBox="0 0 100 100" width="120" height="120" style="margin-bottom: 1.5rem; filter: drop-shadow(0 0 20px rgba(6, 182, 212, 0.4));">
+              <rect x="25" y="10" width="50" height="80" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="4" />
+              <rect x="32" y="18" width="36" height="20" rx="3" fill="#0891b2" opacity="0.8" />
+              <line x1="38" y1="28" x2="62" y2="28" stroke="#fff" stroke-width="3" stroke-linecap="round" />
+              <circle cx="50" cy="55" r="14" fill="#0f172a" stroke="#475569" stroke-width="2" />
+              <line x1="50" y1="55" x2="44" y2="46" stroke="#f59e0b" stroke-width="3" stroke-linecap="round" />
+              <circle cx="42" cy="80" r="4" fill="#f43f5e" />
+              <circle cx="58" cy="80" r="4" fill="#1e293b" />
+            </svg>
+          </div>
+          <h1 style="font-size: 2.5rem; font-weight: 800; margin-bottom: 0.75rem; background: linear-gradient(135deg, #fff, var(--accent-cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ElectroCompanion App</h1>
+          <p style="font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 1.5rem; line-height: 1.6;">
+            Your ultimate interactive electronics workbench companion.
+          </p>
+          <div class="welcome-instructions" style="background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); padding: 1.25rem; border-radius: 12px; display: inline-block; text-align: left; max-width: 100%;">
+            <h3 style="color: var(--accent-amber); font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+              <span>⚡</span> Getting Started
+            </h3>
+            <ol style="color: var(--text-secondary); font-size: 0.9rem; padding-left: 1.25rem; line-height: 1.7;">
+              <li><strong>Rotate the dial</strong> on the multimeter sidebar/header to select a measurement tool.</li>
+              <li>Press the yellow <strong>SEARCH</strong> button on the DMM face to search components.</li>
+              <li>Press the <strong>LIGHT</strong> button to change the LCD backlight color.</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 1: COMPONENT SEARCH ==================== -->
+      <section id="search-view" class="view-section">
+        <div class="content-header">
+          <h1>Datasheet & Component Lookup</h1>
+          <p>Search common components offline, view package pinouts, or click to query internet datasheets instantly.</p>
+        </div>
+
+        <div class="search-container">
+          <div class="search-input-wrapper">
+            <svg viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="search-input" class="search-input" placeholder="Enter identification code (e.g., BC547, 1N4007, NE555, LM7805)...">
+          </div>
+          <button id="web-search-btn" class="datasheet-btn">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+            Search Web Datasheet
+          </button>
+        </div>
+
+        <div class="filter-pills">
+          <button class="filter-pill active" data-filter="all">All Components</button>
+          <button class="filter-pill" data-filter="diode">Diodes</button>
+          <button class="filter-pill" data-filter="transistor">Transistors / MOSFETs</button>
+          <button class="filter-pill" data-filter="regulator">Voltage Regulators</button>
+          <button class="filter-pill" data-filter="ic">ICs (Op-Amps / Timers)</button>
+          <button class="filter-pill" data-filter="microcontroller">Boards & MCU</button>
+        </div>
+
+        <div id="results-grid" class="results-grid">
+          <!-- Cards injected via JavaScript -->
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 2: RESISTOR COLOR CODE ==================== -->
+      <section id="resistor-view" class="view-section">
+        <div class="content-header">
+          <h1>Resistor Color Code Calculator</h1>
+          <p>Determine resistance values by picking band colors, or input a resistance value to decode its band layout.</p>
+        </div>
+
+        <!-- Resistor Sub-Tools Tab Group -->
+        <div class="tab-group" id="resistor-tools-tabs" style="margin-bottom: 2rem;">
+          <button class="tab-btn active" data-tool="color-code">Color Code Calculator</button>
+          <button class="tab-btn" data-tool="smd-code">SMD Resistor Decoder</button>
+          <button class="tab-btn" data-tool="combinations">Series & Parallel Solver</button>
+        </div>
+
+        <!-- SECTION 1: COLOR CODE CALCULATOR -->
+        <div id="resistor-color-calculator-section">
+          <!-- Calculator Tabs -->
+          <div class="tab-group" id="resistor-bands-tabs">
+            <button class="tab-btn active" data-bands="4">4 Bands</button>
+            <button class="tab-btn" data-bands="5">5 Bands</button>
+            <button class="tab-btn" data-bands="6">6 Bands</button>
+          </div>
+
+          <div class="tool-grid">
+            <!-- Left side: Selectors -->
+            <div class="glass-card">
+              <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1.5rem; color:var(--accent-cyan);">Select Band Colors</h2>
+              
+              <div id="band-selection-container" class="band-selection-grid">
+                <!-- Band color options dynamically generated via JS -->
+              </div>
+
+              <!-- Dynamic Result Box -->
+              <div class="calc-result-box">
+                <span class="calc-result-title">Calculated Resistance</span>
+                <span class="calc-result-val" id="resistor-result-val">4.7 kΩ</span>
+                <span class="calc-result-sub" id="resistor-result-sub">Tolerance: ±5%</span>
+              </div>
+            </div>
+
+            <!-- Right side: Interactive Visualizer & Value-to-Color Input -->
+            <div style="display:flex; flex-direction:column; gap:1.5rem;">
+              <div class="glass-card interactive-visualizer" style="--card-glow: var(--accent-cyan-glow)">
+                <svg id="resistor-svg" viewBox="0 0 300 100">
+                  <!-- Leads -->
+                  <line x1="0" y1="50" x2="60" y2="50" stroke="#64748b" stroke-width="5" stroke-linecap="round"/>
+                  <line x1="240" y1="50" x2="300" y2="50" stroke="#64748b" stroke-width="5" stroke-linecap="round"/>
+                  
+                  <!-- Resistor Body (beige ceramic body) -->
+                  <rect x="60" y="20" width="180" height="60" rx="15" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="2" class="resistor-body"/>
+                  <!-- End bulbs to make it look like axial -->
+                  <rect x="58" y="15" width="15" height="70" rx="5" fill="#e2e8f0" class="resistor-body"/>
+                  <rect x="227" y="15" width="15" height="70" rx="5" fill="#e2e8f0" class="resistor-body"/>
+                  
+                  <!-- Color Bands (clipped inside flat region) -->
+                  <rect id="res-band-1" x="80" y="16" width="12" height="68" fill="transparent" class="band"/>
+                  <rect id="res-band-2" x="110" y="21" width="12" height="58" fill="transparent" class="band"/>
+                  <rect id="res-band-3" x="140" y="21" width="12" height="58" fill="transparent" class="band"/>
+                  <rect id="res-band-4" x="170" y="21" width="12" height="58" fill="transparent" class="band"/>
+                  <rect id="res-band-5" x="200" y="21" width="12" height="58" fill="transparent" class="band"/>
+                  <rect id="res-band-6" x="228" y="16" width="12" height="68" fill="transparent" class="band"/>
+                </svg>
+              </div>
+
+              <!-- Value to Color Input Box -->
+              <div class="glass-card">
+                <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1rem; color:var(--accent-cyan)">Decode Resistance Value</h2>
+                <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1.25rem;">Type a resistance to calculate and display its color code automatically.</p>
+                
+                <div class="form-group">
+                  <label for="val-to-color-input">Resistance Value</label>
+                  <div style="display:flex; gap:0.5rem;">
+                    <input type="text" id="val-to-color-input" class="form-input" placeholder="e.g. 4.7k, 220, 1M, 0.47" style="flex:1;">
+                    <select id="val-to-color-tolerance" class="form-select" style="width:110px;">
+                      <option value="gold">±5% (Gold)</option>
+                      <option value="silver">±10% (Silver)</option>
+                      <option value="brown">±1% (Brown)</option>
+                      <option value="red">±2% (Red)</option>
+                      <option value="green">±0.5% (Green)</option>
+                    </select>
+                  </div>
+                  <div id="val-to-color-error" style="color:var(--accent-rose); font-size:0.8rem; font-weight:500; display:none; margin-top:0.5rem;"></div>
+                </div>
+                
+                <button id="val-to-color-btn" class="datasheet-btn" style="width:100%; padding:0.8rem; justify-content:center;">
+                  Show Color Code
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 2: SMD RESISTOR DECODER -->
+        <div id="resistor-smd-section" style="display:none;">
+          <div class="tool-grid">
+            <!-- Decoder Inputs -->
+            <div class="glass-card">
+              <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1.5rem; color:var(--accent-amber);">Decode SMD Resistor Code</h2>
+              <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1.5rem;">Type a standard 3-digit, 4-digit, or EIA-96 SMD resistor code. The resistance value is calculated in real time.</p>
+              
+              <div class="form-group">
+                <label for="smd-code-input">SMD Resistor Markings Code</label>
+                <input type="text" id="smd-code-input" class="form-input" placeholder="e.g., 103, 4R7, 01C" style="text-transform: uppercase;" maxlength="4">
+                <small style="color:var(--text-muted); font-size:0.75rem; margin-top:4px; display:block;">Supports 3-Digit (5%), 4-Digit (1%), and EIA-96 (1%) coding standards.</small>
+              </div>
+              
+              <div class="calc-result-box" style="background:rgba(245, 158, 11, 0.05); border-color:rgba(245, 158, 11, 0.2)">
+                <span class="calc-result-title" style="color:var(--accent-amber);">Decoded Resistance</span>
+                <span class="calc-result-val" id="smd-result-val">10 kΩ</span>
+                <span class="calc-result-sub" id="smd-result-sub">Tolerance: ±5% (3-Digit Code)</span>
+              </div>
+            </div>
+            
+            <!-- Visual SMD Chip & Encoder -->
+            <div style="display:flex; flex-direction:column; gap:1.5rem;">
+              <div class="glass-card interactive-visualizer" style="display:flex; justify-content:center; align-items:center; min-height:130px; --card-glow: var(--accent-amber-glow)">
+                <svg id="smd-svg" viewBox="0 0 200 100" style="width: 100%; max-width: 220px;">
+                  <!-- Chip Body (Black) -->
+                  <rect x="30" y="20" width="140" height="60" rx="4" fill="#1e293b" stroke="#334155" stroke-width="2"/>
+                  <!-- Terminals (Silver) -->
+                  <rect x="15" y="20" width="15" height="60" rx="2" fill="#94a3b8" />
+                  <rect x="170" y="20" width="15" height="60" rx="2" fill="#94a3b8" />
+                  <!-- Highlight Gloss -->
+                  <path d="M 35 30 L 165 30" stroke="#475569" stroke-width="2" style="opacity: 0.3;"/>
+                  <!-- Code Text -->
+                  <text id="smd-text-svg" x="100" y="56" fill="#f8fafc" font-family="monospace" font-weight="bold" font-size="22" text-anchor="middle">103</text>
+                </svg>
+              </div>
+              
+              <div class="glass-card">
+                <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1rem; color:var(--accent-amber);">Encode Value to SMD Code</h2>
+                <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1.25rem;">Type a resistance value to calculate its corresponding SMD code combinations.</p>
+                
+                <div class="form-group">
+                  <label for="smd-val-input">Resistance Value</label>
+                  <input type="text" id="smd-val-input" class="form-input" placeholder="e.g. 10k, 220, 1.5M, 4.7">
+                </div>
+                
+                <div id="smd-val-error" style="color:var(--accent-rose); font-size:0.8rem; font-weight:500; display:none; margin-top:0.5rem; margin-bottom: 0.5rem;"></div>
+
+                <div style="background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:10px; padding:0.75rem;">
+                  <div style="font-weight:600; color:var(--text-secondary); margin-bottom:0.5rem; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.5px;">Calculated SMD Codes:</div>
+                  <div style="display:flex; flex-direction:column; gap:0.5rem; font-family:var(--font-mono); font-size:0.85rem;" id="smd-encoded-output">
+                    <!-- Dynamic suggestions populated via JS -->
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 3: SERIES & PARALLEL COMBINATIONS -->
+        <div id="resistor-combinations-section" style="display:none;">
+          <div class="tool-grid">
+            <!-- Left inputs list card -->
+            <div class="glass-card">
+              <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1.5rem; color:var(--accent-green);">Series & Parallel Calculator</h2>
+              <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1.5rem;">Add resistor values below to compute their total equivalent resistance in series or parallel.</p>
+              
+              <div class="form-group">
+                <label>Connection Configuration</label>
+                <div style="display:flex; gap:1.5rem; margin-top:0.25rem; margin-bottom:1.25rem;">
+                  <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-size:0.9rem; color:var(--text-secondary); font-weight:500;">
+                    <input type="radio" name="combo-mode" value="series" checked style="accent-color:var(--accent-green);"> Series Connection
+                  </label>
+                  <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-size:0.9rem; color:var(--text-secondary); font-weight:500;">
+                    <input type="radio" name="combo-mode" value="parallel" style="accent-color:var(--accent-green);"> Parallel Connection
+                  </label>
+                </div>
+              </div>
+              
+              <div id="combination-resistors-list" style="display:flex; flex-direction:column; gap:0.75rem; margin-bottom:1.25rem;">
+                <!-- Dynamically populated rows -->
+              </div>
+              
+              <button id="btn-add-combo-resistor" class="datasheet-btn" style="width:100%; padding:0.8rem; justify-content:center; border-color:rgba(16, 185, 129, 0.4); color:var(--accent-green); background:rgba(16, 185, 129, 0.05); margin-bottom:1.5rem;">
+                + Add Resistor Input
+              </button>
+
+              <div class="calc-result-box" style="background:rgba(16, 185, 129, 0.05); border-color:rgba(16, 185, 129, 0.2)">
+                <span class="calc-result-title" style="color:var(--accent-green);">Equivalent Resistance (Req)</span>
+                <span class="calc-result-val" id="combo-result-val">0 Ω</span>
+                <span class="calc-result-sub" id="combo-result-math">Formula: Req = R1 + R2</span>
+              </div>
+            </div>
+
+            <!-- Right visual schematic card -->
+            <div class="glass-card" style="display:flex; flex-direction:column; justify-content:space-between; --card-glow: var(--accent-green-glow)">
+              <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1rem; color:var(--accent-green);">Dynamic Circuit Schematic</h2>
+              <div id="combo-schematic-container" style="background:rgba(2, 6, 23, 0.4); border:1px solid var(--card-border); border-radius:14px; padding:1rem; min-height: 200px; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+                <!-- SVG injected dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 3: CAPACITOR DECODER ==================== -->
+      <section id="capacitor-view" class="view-section">
+        <div class="content-header">
+          <h1>Capacitor Markings Decoder</h1>
+          <p>Read standard three-digit ceramic or film capacitor codes and tolerance letters in seconds.</p>
+        </div>
+
+        <div class="tool-grid">
+          <!-- Left Input Form -->
+          <div class="glass-card">
+            <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1.5rem; color:var(--accent-amber)">Decoder Parameters</h2>
+            
+            <div class="form-group">
+              <label for="cap-code-input">Capacitor Code (3 Digits)</label>
+              <input type="text" id="cap-code-input" class="form-input" placeholder="e.g., 104, 222, 473, 10" value="104" maxlength="4">
+              <small style="color:var(--text-muted); font-size:0.75rem; margin-top:2px;">Type standard numbers printed on the body (e.g. 104 represents 10 * 10^4 pF).</small>
+            </div>
+
+            <div class="form-group">
+              <label for="cap-tolerance-select">Tolerance Letter</label>
+              <select id="cap-tolerance-select" class="form-select">
+                <option value="none">None / Not printed</option>
+                <option value="J">J - ±5%</option>
+                <option value="K" selected>K - ±10%</option>
+                <option value="M">M - ±20%</option>
+                <option value="Z">Z - +80% / -20%</option>
+                <option value="F">F - ±1%</option>
+                <option value="G">G - ±2%</option>
+                <option value="D">D - ±0.5 pF</option>
+              </select>
+            </div>
+
+            <div class="calc-result-box" style="background:rgba(245, 158, 11, 0.05); border-color:rgba(245, 158, 11, 0.2)">
+              <span class="calc-result-title" style="color:var(--accent-amber)">Calculated Capacitance</span>
+              <span class="calc-result-val" id="cap-result-val">100 nF</span>
+              <span class="calc-result-sub" id="cap-result-sub">Tolerance: ±10% | Value in pF: 100,000 pF</span>
+            </div>
+          </div>
+
+          <!-- Right side: Visual Ceramic Cap & Value-to-Code Input -->
+          <div style="display:flex; flex-direction:column; gap:1.5rem;">
+            <div class="glass-card capacitor-card-visualizer" style="--card-glow: var(--accent-amber-glow)">
+              <svg id="capacitor-svg" viewBox="0 0 200 240">
+                <!-- Capacitor Leads -->
+                <line x1="75" y1="120" x2="75" y2="240" stroke="#64748b" stroke-width="5" stroke-linecap="round"/>
+                <line x1="125" y1="120" x2="125" y2="240" stroke="#64748b" stroke-width="5" stroke-linecap="round"/>
+                
+                <!-- Ceramic Disc Body -->
+                <ellipse cx="100" cy="85" rx="65" ry="60" fill="#f59e0b" stroke="#d97706" stroke-width="2.5"/>
+                <ellipse cx="100" cy="85" rx="60" ry="55" fill="#fbbf24" style="opacity: 0.15;"/>
+                
+                <!-- Highlight gloss -->
+                <path d="M 50 65 Q 100 40 150 65" fill="none" stroke="#fff" stroke-width="3" style="opacity: 0.25;"/>
+
+                <!-- Value print text -->
+                <text id="cap-text-svg" x="100" y="100" class="cap-text">104K</text>
+              </svg>
+            </div>
+
+            <!-- Value to Code Input Box -->
+            <div class="glass-card">
+              <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1rem; color:var(--accent-amber)">Decode Capacitance Value</h2>
+              <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1.25rem;">Type a capacitance to calculate and display its standard 3-digit code automatically.</p>
+              
+              <div class="form-group">
+                <label for="cap-val-input">Capacitance Value</label>
+                <div style="display:flex; gap:0.5rem;">
+                  <input type="text" id="cap-val-input" class="form-input" placeholder="e.g. 100n, 10nF, 0.1uF, 47p, 10u, 1000pF" style="flex:1;">
+                  <select id="cap-val-tolerance" class="form-select" style="width:110px;">
+                    <option value="K" selected>±10% (K)</option>
+                    <option value="J">±5% (J)</option>
+                    <option value="M">±20% (M)</option>
+                    <option value="Z">+80%/-20% (Z)</option>
+                    <option value="F">±1% (F)</option>
+                  </select>
+                </div>
+                <div id="cap-val-error" style="color:var(--accent-rose); font-size:0.8rem; font-weight:500; display:none; margin-top:0.5rem;"></div>
+              </div>
+              
+              <button id="cap-val-btn" class="datasheet-btn" style="width:100%; padding:0.8rem; justify-content:center; background:linear-gradient(135deg, var(--accent-amber), var(--accent-orange)); box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);">
+                Show Capacitor Code
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 4: LED LIMITING RESISTOR ==================== -->
+      <section id="led-view" class="view-section">
+        <div class="content-header">
+          <h1>LED Current-Limiting Resistor Calculator</h1>
+          <p>Quickly find the required series resistor value and power rating to protect an LED from burning out.</p>
+        </div>
+
+        <div class="tool-grid">
+          <!-- Left side: Parameters -->
+          <div class="glass-card">
+            <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1.5rem; color:var(--accent-green)">Calculator Parameters</h2>
+            
+            <div class="form-group">
+              <label for="led-type-select">Select Common LED Preset</label>
+              <select id="led-type-select" class="form-select">
+                <!-- Options populated via JS -->
+              </select>
+            </div>
+
+            <div class="form-control-row">
+              <div class="form-group">
+                <label for="led-vsource">Source Voltage (Vs)</label>
+                <div style="position:relative; display:flex; align-items:center;">
+                  <input type="number" id="led-vsource" class="form-input" value="5" step="0.1" style="width:100%; padding-right:2rem;">
+                  <span style="position:absolute; right:12px; color:var(--text-muted); font-size:0.85rem;">V</span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="led-vled">LED Forward Voltage (Vf)</label>
+                <div style="position:relative; display:flex; align-items:center;">
+                  <input type="number" id="led-vled" class="form-input" value="1.8" step="0.1" style="width:100%; padding-right:2rem;">
+                  <span style="position:absolute; right:12px; color:var(--text-muted); font-size:0.85rem;">V</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="led-iled">LED Forward Current (If)</label>
+              <div style="position:relative; display:flex; align-items:center;">
+                <input type="number" id="led-iled" class="form-input" value="20" step="1" style="width:100%; padding-right:2.5rem;">
+                <span style="position:absolute; right:12px; color:var(--text-muted); font-size:0.85rem;">mA</span>
+              </div>
+            </div>
+
+            <div class="calc-result-box" style="background:rgba(16, 185, 129, 0.05); border-color:rgba(16, 185, 129, 0.2)">
+              <span class="calc-result-title" style="color:var(--accent-green)">Required Resistor Value</span>
+              <span class="calc-result-val" id="led-result-resist">160 Ω</span>
+              <span class="calc-result-sub" id="led-result-power">0.064 W (Rec. Rating: 1/4 W)</span>
+            </div>
+            
+            <div id="led-result-warning" style="color:var(--accent-rose); font-size:0.8rem; font-weight:500; display:none; background:rgba(244,63,94,0.06); padding:0.75rem; border-radius:8px; border:1px solid rgba(244,63,94,0.2); margin-top:1rem;"></div>
+          </div>
+
+          <!-- Right side: LED Circuit Schematic Diagram -->
+          <div class="glass-card led-circuit-diagram" style="--card-glow: var(--accent-green-glow);">
+            <!-- Interactive LED Circuit Schematic -->
+            <svg viewBox="0 0 350 160" width="100%">
+              <!-- Source Voltage circle -->
+              <circle cx="45" cy="80" r="16" fill="none" stroke="#64748b" stroke-width="3" />
+              <text x="45" y="85" fill="#f8fafc" font-size="12" font-family="monospace" text-anchor="middle" font-weight="700">Vs</text>
+              <text x="45" y="55" fill="#94a3b8" font-size="11" text-anchor="middle" font-weight="500">Source</text>
+              
+              <!-- Direct wire paths -->
+              <path d="M 61 80 L 110 80" stroke="#64748b" stroke-width="3" fill="none" />
+              
+              <!-- Resistor drawing -->
+              <rect x="110" y="65" width="60" height="30" rx="3" fill="#0f172a" stroke="#f59e0b" stroke-width="3" />
+              <line x1="120" y1="80" x2="160" y2="80" stroke="#f59e0b" stroke-width="2" />
+              <!-- Resistor band mockups -->
+              <line x1="125" y1="65" x2="125" y2="95" stroke="#dc2626" stroke-width="3" />
+              <line x1="135" y1="65" x2="135" y2="95" stroke="#ea580c" stroke-width="3" />
+              <line x1="145" y1="65" x2="145" y2="95" stroke="#78350f" stroke-width="3" />
+              <line x1="155" y1="65" x2="155" y2="95" stroke="#d97706" stroke-width="3" />
+              <text x="140" y="50" fill="#f59e0b" font-size="12" font-weight="700" text-anchor="middle">Resistor (R)</text>
+              
+              <path d="M 170 80 L 220 80" stroke="#64748b" stroke-width="3" fill="none" />
+              
+              <!-- Diode symbol representation -->
+              <polygon points="220,65 250,80 220,95" fill="none" stroke="#10b981" stroke-width="3" />
+              <line x1="250" y1="65" x2="250" y2="95" stroke="#10b981" stroke-width="3" />
+              
+              <!-- LED emission arrows -->
+              <path d="M 232 55 L 217 40" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" fill="none" />
+              <polygon points="217,40 224,42 220,46" fill="#10b981" />
+              
+              <path d="M 247 55 L 232 40" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" fill="none" />
+              <polygon points="232,40 239,42 235,46" fill="#10b981" />
+              
+              <text x="235" y="112" fill="#10b981" font-size="12" font-weight="700" text-anchor="middle">LED (Vf)</text>
+              
+              <!-- Return wires -->
+              <path d="M 250 80 L 305 80 L 305 135 L 45 135 L 45 96" stroke="#64748b" stroke-width="3" fill="none" />
+              
+              <!-- Ground Indicator Symbol at bottom -->
+              <line x1="175" y1="135" x2="175" y2="147" stroke="#64748b" stroke-width="3" />
+              <line x1="165" y1="147" x2="185" y2="147" stroke="#64748b" stroke-width="3" />
+              <line x1="169" y1="151" x2="181" y2="151" stroke="#64748b" stroke-width="2" />
+              <line x1="172" y1="155" x2="178" y2="155" stroke="#64748b" stroke-width="1.5" />
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 5: INDUCTOR COLOR CODE ==================== -->
+      <section id="inductor-view" class="view-section">
+        <div class="content-header">
+          <h1>Inductor Color Code Calculator</h1>
+          <p>Decode axial inductor color bands to inductance values, or convert an inductance value to color bands.</p>
+        </div>
+
+        <div class="tool-grid">
+          <!-- Left side: Selectors -->
+          <div class="glass-card">
+            <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1.5rem; color:var(--accent-cyan);">Select Band Colors</h2>
+            
+            <div id="inductor-band-selection-container" class="band-selection-grid">
+              <!-- Inductor band color options dynamically generated via JS -->
+            </div>
+
+            <!-- Dynamic Result Box -->
+            <div class="calc-result-box" style="background:rgba(6, 182, 212, 0.05); border-color:rgba(6, 182, 212, 0.2)">
+              <span class="calc-result-title">Calculated Inductance</span>
+              <span class="calc-result-val" id="inductor-result-val">100 µH</span>
+              <span class="calc-result-sub" id="inductor-result-sub">Tolerance: ±10%</span>
+            </div>
+          </div>
+
+          <!-- Right side: Interactive Visualizer & Value-to-Color Input -->
+          <div style="display:flex; flex-direction:column; gap:1.5rem;">
+            <div class="glass-card interactive-visualizer" style="--card-glow: var(--accent-cyan-glow)">
+              <svg id="inductor-svg" viewBox="0 0 300 100" style="width: 100%; max-width: 320px; filter: drop-shadow(0 15px 15px rgba(0,0,0,0.4));">
+                <!-- Leads -->
+                <line x1="0" y1="50" x2="60" y2="50" stroke="#64748b" stroke-width="5" stroke-linecap="round"/>
+                <line x1="240" y1="50" x2="300" y2="50" stroke="#64748b" stroke-width="5" stroke-linecap="round"/>
+                
+                <!-- Inductor Body (characteristic teal/green axial package) -->
+                <rect x="60" y="20" width="180" height="60" rx="20" fill="#0d9488" stroke="#0f766e" stroke-width="2"/>
+                <!-- End bulbs to make it look like axial -->
+                <rect x="58" y="15" width="15" height="70" rx="7" fill="#0f766e"/>
+                <rect x="227" y="15" width="15" height="70" rx="7" fill="#0f766e"/>
+                
+                <!-- Color Bands -->
+                <rect id="ind-band-1" x="80" y="16" width="12" height="68" fill="transparent"/>
+                <rect id="ind-band-2" x="115" y="21" width="12" height="58" fill="transparent"/>
+                <rect id="ind-band-3" x="150" y="21" width="12" height="58" fill="transparent"/>
+                <rect id="ind-band-4" x="208" y="16" width="12" height="68" fill="transparent"/>
+              </svg>
+            </div>
+
+            <!-- Value to Color Input Box -->
+            <div class="glass-card">
+              <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1rem; color:var(--accent-cyan)">Decode Inductance Value</h2>
+              <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1.25rem;">Type an inductance value to calculate and display its color code automatically.</p>
+              
+              <div class="form-group">
+                <label for="ind-val-to-color-input">Inductance Value</label>
+                <div style="display:flex; gap:0.5rem;">
+                  <input type="text" id="ind-val-to-color-input" class="form-input" placeholder="e.g. 100u, 1m, 10uH, 0.47" style="flex:1;">
+                  <select id="ind-val-to-color-tolerance" class="form-select" style="width:110px;">
+                    <option value="silver">±10% (Silver)</option>
+                    <option value="gold">±5% (Gold)</option>
+                    <option value="black">±20% (Black)</option>
+                    <option value="brown">±1% (Brown)</option>
+                    <option value="red">±2% (Red)</option>
+                  </select>
+                </div>
+                <div id="ind-val-to-color-error" style="color:var(--accent-rose); font-size:0.8rem; font-weight:500; display:none; margin-top:0.5rem;"></div>
+              </div>
+              
+              <button id="ind-val-to-color-btn" class="datasheet-btn" style="width:100%; padding:0.8rem; justify-content:center;">
+                Show Color Code
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 6: PHYSICS LAWS SOLVER ==================== -->
+      <section id="laws-view" class="view-section">
+        <div class="content-header">
+          <h1>Electronics Physics Laws Solver</h1>
+          <p>Select a circuit formula, input any two parameters, and calculate the missing value instantly.</p>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:2.0rem; max-width: 800px; margin: 0 auto;">
+          <div class="glass-card">
+            <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1.5rem; color:var(--accent-purple);">Select Equation / Law</h2>
+            <div class="form-group">
+              <label for="physics-law-select">Active Formula</label>
+              <select id="physics-law-select" class="form-select" style="font-size: 1.1rem; padding: 0.9rem;">
+                <option value="ohms-law">Ohm's Law (V = I × R)</option>
+                <option value="power-law">Joule's Power Law (P = V × I)</option>
+                <option value="lc-resonance">LC Resonance Frequency (f = 1 / (2π√LC))</option>
+                <option value="voltage-divider">Voltage Divider Solver</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Parameter Fields Container -->
+          <div class="glass-card" id="physics-fields-card" style="--card-glow: var(--accent-purple-glow)">
+            <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1.5rem; color:var(--accent-purple);" id="physics-fields-title">Ohm's Law Calculator</h2>
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1.5rem;">Enter values into any two boxes. The third parameter will be computed automatically.</p>
+
+            <div style="display:flex; flex-direction:column; gap:1.25rem;" id="physics-inputs-container">
+              <!-- Dynamically populated fields via JS -->
+            </div>
+
+            <!-- Divider Circuit schematic container -->
+            <div id="physics-divider-circuit" style="display:none; justify-content:center; align-items:center; margin-top:1.5rem; background:rgba(2, 6, 23, 0.4); border:1px solid var(--card-border); border-radius:14px; padding:1.5rem; min-height: 220px; overflow:hidden;">
+              <!-- Dynamically populated SVG via js/physics.js -->
+            </div>
+
+            <!-- Error message if any -->
+            <div id="physics-calc-error" style="color:var(--accent-rose); font-size:0.85rem; font-weight:500; display:none; background:rgba(244,63,94,0.06); padding:0.75rem; border-radius:8px; border:1px solid rgba(244,63,94,0.2); margin-top:1.25rem;"></div>
+
+            <!-- Physics Info Block -->
+            <div id="physics-info-block" style="margin-top:2rem; padding:1.25rem; border-radius:12px; background:rgba(255,255,255,0.02); border:1px solid var(--card-border); display:flex; align-items:center; gap:1rem;">
+              <div style="width:40px; height:40px; border-radius:8px; background:rgba(139, 92, 246, 0.1); border:1px solid rgba(139, 92, 246, 0.3); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--accent-purple)" stroke-width="2" fill="none">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="16" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+              </div>
+              <p id="physics-explanation-text" style="font-size:0.85rem; color:var(--text-secondary); line-height:1.4;"></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 7: COMPONENT SUBSTITUTIONS ==================== -->
+      <section id="substitutes-view" class="view-section">
+        <div class="content-header">
+          <h1>Alternative & Substitute Components</h1>
+          <p>Find safe replacements for damaged diodes, BJTs, MOSFETs, and linear regulators in your workshop.</p>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:2rem;">
+          <!-- Selector glass card -->
+          <div class="glass-card">
+            <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1.5rem; color:var(--accent-green)">Select Damaged Component</h2>
+            <div class="form-group">
+              <label for="substitute-search-select">Component Model</label>
+              <select id="substitute-search-select" class="form-select" style="font-size: 1.1rem; padding: 0.9rem;">
+                <option value="none" disabled selected>-- Select a component to check equivalents --</option>
+                <!-- populated via JS -->
+              </select>
+            </div>
+          </div>
+
+          <!-- Equivalents Comparison Section -->
+          <div id="substitutes-results" style="display:none; animation: fadeIn 0.4s ease-out;">
+            <div class="glass-card" style="margin-bottom: 1.5rem; --card-glow: var(--accent-green-glow)">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+                <div>
+                  <h2 style="font-size:1.5rem; font-weight:700;" id="sub-original-name">BC547</h2>
+                  <span class="component-badge transistor" id="sub-original-badge">NPN BJT</span>
+                </div>
+                <div style="font-size:0.9rem; color:var(--text-secondary);">
+                  Package: <span id="sub-original-pkg" style="font-family:var(--font-mono); color:var(--text-primary); font-weight:600;">TO-92</span>
+                </div>
+              </div>
+
+              <!-- Comparison Table Wrapper -->
+              <div class="table-responsive-wrapper" style="overflow-x:auto; margin: 1rem 0; border-radius:12px; border:1px solid var(--card-border);">
+                <table class="substitute-table" style="width:100%; border-collapse:collapse; text-align:left; font-size:0.9rem;">
+                  <thead>
+                    <!-- populated via JS -->
+                  </thead>
+                  <tbody id="substitute-table-body">
+                    <!-- populated via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 8: COMPONENT CHECKING ==================== -->
+      <section id="checking-view" class="view-section">
+        <div class="content-header">
+          <h1>Interactive Component Tester</h1>
+          <p>Select any component from the database to run an offline test using the skeuomorphic multimeter simulation.</p>
+        </div>
+
+        <div class="tool-grid">
+          <!-- Left side: Dropdown selector & Details -->
+          <div class="glass-card">
+            <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1.5rem; color:var(--accent-cyan)">Select Component to Test</h2>
+            
+            <div class="form-group" style="margin-bottom:1.5rem;">
+              <label for="checking-comp-select" style="display:block; font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.5rem; font-weight:500;">Active Component</label>
+              <select id="checking-comp-select" class="form-select" style="font-size:1.1rem; padding:0.9rem; width:100%; background:rgba(15, 23, 42, 0.6); border:1px solid var(--card-border); border-radius:12px; color:var(--text-primary); outline:none;">
+                <!-- Populated via JS -->
+              </select>
+            </div>
+
+            <div style="background:rgba(255,255,255,0.02); border:1px solid var(--card-border); padding:1.25rem; border-radius:12px; min-height:100px;">
+              <h3 style="color:var(--accent-cyan); font-size:1rem; font-weight:600; margin-bottom:0.5rem;" id="checking-comp-name">-</h3>
+              <p id="checking-comp-desc" style="font-size:0.85rem; color:var(--text-secondary); line-height:1.5;"></p>
+            </div>
+          </div>
+
+          <!-- Right side: Multimeter simulator & logs -->
+          <div style="display:flex; flex-direction:column; gap:1.5rem;">
+            <div class="glass-card" style="display:flex; flex-direction:column; gap:1rem; padding:1.25rem; align-items:center; --card-glow: var(--accent-cyan-glow)">
+              <div style="display:flex; justify-content:space-between; width:100%; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                <span style="font-size:0.9rem; color:var(--text-secondary);">Interactive Multimeter checking simulation</span>
+                <div style="display:flex; gap:0.5rem;">
+                  <button class="filter-pill" id="btn-run-simulation" style="margin-bottom:0; font-weight:600; color:var(--accent-green); border-color:var(--accent-green-glow)">Run Test Simulation</button>
+                  <button class="filter-pill" id="btn-pause-simulation" style="margin-bottom:0; font-weight:600; display:none;">Pause</button>
+                </div>
+              </div>
+              
+              <div id="modal-multimeter-test" style="width:100%; max-width:480px; height:240px; display:flex; justify-content:center; align-items:center; background:#111827; border-radius:10px; border:1px solid rgba(255,255,255,0.05); position:relative; overflow:hidden;">
+                <!-- SVG Probe animation injected dynamically via JS -->
+              </div>
+              
+              <div id="simulation-status-log" style="width:100%; text-align:center; font-size:0.85rem; color:var(--text-secondary); font-family:var(--font-mono); min-height:24px; padding:0.25rem; background:rgba(0,0,0,0.2); border-radius:6px;">
+                Ready to test. Click "Run Test Simulation".
+              </div>
+            </div>
+        </div>
+      </div>
+    </section>
+      <!-- ==================== VIEW 9: RCCB TRIPPING DIAGNOSTIC ==================== -->
+      <section id="rccb-view" class="view-section">
+        <div class="content-header">
+          <h1>RCCB Tripping Route Map</h1>
+          <p>Systematically locate and isolate earth leakage faults in your house wiring.</p>
+        </div>
+
+        <div style="max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 2rem;">
+          
+          <!-- RCCB Sub-Navigation Tabs -->
+          <div class="tab-group" id="rccb-sub-tabs" style="margin-self: flex-start;">
+            <button class="tab-btn active" data-rccb-tab="wizard">Tripping Wizard</button>
+            <button class="tab-btn" data-rccb-tab="cases">Case Studies & Logs</button>
+            <button class="tab-btn" data-rccb-tab="chat">AI Assistant</button>
+          </div>
+
+          <!-- TAB PANEL 1: WIZARD -->
+          <div id="rccb-tab-wizard" class="rccb-tab-content" style="display: flex; flex-direction: column; gap: 2rem; width: 100%;">
+            <!-- STAGE 1: SETUP QUESTIONNAIRE -->
+            <div class="glass-card" id="rccb-setup-panel">
+              <h2 style="font-size:1.4rem; font-weight:700; color:var(--accent-purple); margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem;">
+                <span>📋</span> System Configuration Setup
+              </h2>
+              <p style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:1.5rem;">
+                Configure your home electrical setup to adapt the troubleshooting route map.
+              </p>
+
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:1.5rem; margin-bottom:2rem;">
+                <div class="form-group">
+                  <label for="rccb-phase-select">Supply Configuration</label>
+                  <select id="rccb-phase-select" class="form-select">
+                    <option value="single">Single-Phase System (230V)</option>
+                    <option value="three">Three-Phase System (415V)</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="rccb-solar-select">Solar Grid-tied Power</label>
+                  <select id="rccb-solar-select" class="form-select">
+                    <option value="no">No Solar Installed</option>
+                    <option value="yes">Yes, Solar Power Installed</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="rccb-inverter-select">Inverter / Backup UPS</label>
+                  <select id="rccb-inverter-select" class="form-select">
+                    <option value="no">No Inverter/UPS</option>
+                    <option value="yes">Yes, Inverter/UPS Backup Installed</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="rccb-trip-select">Tripping Pattern</label>
+                  <select id="rccb-trip-select" class="form-select">
+                    <option value="immediate">Permanent (Trips immediately on reset)</option>
+                    <option value="intermittent">Intermittent (Trips randomly / hourly)</option>
+                    <option value="heavy-load">Appliance Load (Trips only when heavy device turns on)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Assumptions and Knowledge Card -->
+              <div style="background:rgba(139, 92, 246, 0.05); border:1px solid rgba(139, 92, 246, 0.2); border-radius:12px; padding:1.25rem; margin-bottom:2rem;">
+                <h3 style="color:var(--accent-purple); font-size:1rem; font-weight:600; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem;">
+                  <span>💡</span> Key Diagnostic Assumptions
+                </h3>
+                <ul style="color:var(--text-secondary); font-size:0.85rem; padding-left:1.25rem; line-height:1.6; display:flex; flex-direction:column; gap:0.5rem;">
+                  <li><strong>Neutral-to-Ground Shorts:</strong> Neutral leakage to ground will trip the RCCB even when the MCB (which only breaks the phase wire) is OFF. Identifying neutral wires at the Distribution Board (DB) is key.</li>
+                  <li><strong>Inverter Backfeeding:</strong> Inverters can maintain a separate neutral loop, bypass mains earth, and keep feeding leakage currents back into the panel even if input breakers are switched OFF.</li>
+                  <li><strong>Solar DC Injections:</strong> Solar inverters generate high frequency DC leakage. Standard Class AC RCCBs saturate ("blind") and fail to trip or trip erratically, necessitating dedicated isolation checks.</li>
+                </ul>
+              </div>
+
+              <button id="rccb-btn-start" class="datasheet-btn" style="width:100%; padding:1rem; justify-content:center; background:linear-gradient(135deg, var(--accent-purple), #6366f1); box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3); font-size:1.05rem; font-weight:700;">
+                Start Troubleshooting Route Map
+              </button>
+            </div>
+
+            <!-- STAGE 2: DIAGNOSTIC WIZARD -->
+            <div class="tool-grid" id="rccb-wizard-panel" style="display:none;">
+              <!-- Left Side: Instructions and Actions -->
+              <div class="glass-card" style="display:flex; flex-direction:column; justify-content:space-between; min-height: 400px;">
+                <div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:0.75rem;">
+                    <span id="rccb-step-title" style="font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); font-weight:700;">Step 1 of 5</span>
+                    <span id="rccb-step-badge" class="component-badge transistor" style="margin:0;">Active Check</span>
+                  </div>
+
+                  <div id="rccb-step-body" style="margin-bottom:1.5rem;">
+                    <!-- Dynamic instructions injected here -->
+                  </div>
+
+                  <div id="rccb-wizard-choices" style="display:flex; flex-direction:column; gap:0.75rem; margin-bottom:1.5rem;">
+                    <!-- Dynamic choice buttons injected here -->
+                  </div>
+                </div>
+
+                <!-- Wizard Footer Controls -->
+                <div style="display:flex; justify-content:space-between; gap:1rem; border-top:1px solid rgba(255,255,255,0.05); padding-top:1rem; margin-top:1rem;">
+                  <button id="rccb-btn-back" class="datasheet-btn" style="padding:0.7rem 1.2rem; border-color:var(--text-muted); color:var(--text-secondary);">
+                    ← Back
+                  </button>
+                  <button id="rccb-btn-restart" class="datasheet-btn" style="padding:0.7rem 1.2rem; border-color:var(--accent-rose-glow); color:var(--accent-rose); background:rgba(244, 63, 94, 0.05)">
+                    Restart Setup
+                  </button>
+                </div>
+              </div>
+
+              <!-- Right Side: Interactive Distribution Board SVG Visualizer -->
+              <div class="glass-card" style="display:flex; flex-direction:column; --card-glow: var(--accent-purple-glow); min-height: 400px;">
+                <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:0.5rem; color:var(--accent-purple);">Interactive Panel Schematic</h2>
+                <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:1.5rem;">Flick simulated breakers or disconnect terminals below to see testing flows.</p>
+                
+                <div id="rccb-visual-container" style="background:rgba(2, 6, 23, 0.5); border:1px solid var(--card-border); border-radius:14px; padding:1rem; flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; min-height:300px;">
+                  <!-- DB SVG drawing injected here -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB PANEL 2: CASE STUDIES & HISTORY LOGS -->
+          <div id="rccb-tab-cases" class="rccb-tab-content" style="display: none; flex-direction: column; gap: 2rem; width: 100%;">
+            
+            <!-- Real-World Case Studies -->
+            <div class="glass-card" style="--card-glow: var(--accent-purple-glow);">
+              <h2 style="font-size:1.4rem; font-weight:700; color:var(--accent-purple); margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem;">
+                <span>📚</span> Real-World Case Studies
+              </h2>
+              <p style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:1.5rem;">
+                Read technical breakdowns of actual household earth-leakage tripping scenarios.
+              </p>
+
+              <div style="display:flex; flex-direction:column; gap:1.5rem;">
+                <!-- Case 1 -->
+                <div style="background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:12px; padding:1.25rem;">
+                  <h3 style="color:var(--accent-cyan); font-size:1.05rem; font-weight:600; margin-bottom:0.5rem;">
+                    Case 1: The "Backdoor" Neutral-Earth Arc (Ceiling Light Driver)
+                  </h3>
+                  <p style="font-size:0.85rem; color:var(--text-secondary); line-height:1.6; margin-bottom:0.75rem;">
+                    <strong>Symptom:</strong> A ceiling light pops, blinks, and trips the RCCB on main powerup, even when its Neutral line is completely disconnected at the Distribution Board. The driver has a plastic cover and no earth connection.
+                  </p>
+                  <p style="font-size:0.85rem; color:var(--text-secondary); line-height:1.6;">
+                    <strong>Technical Breakdown:</strong> The Neutral wire inside the wall had an insulation breakdown (measuring 154 kΩ to Earth under a 9V DC multimeter test). When powered by 230V AC, the high voltage arced over, dropping resistance to near-zero. Current flowed through the Live wire, into the driver, and returned down the leaking Neutral wire directly into Earth, completing a "backdoor" loop bypassing the DB neutral bus bar.
+                  </p>
+                </div>
+
+                <!-- Case 2 -->
+                <div style="background:rgba(255,255,255,0.02); border:1px solid var(--card-border); border-radius:12px; padding:1.25rem;">
+                  <h3 style="color:var(--accent-cyan); font-size:1.05rem; font-weight:600; margin-bottom:0.5rem;">
+                    Case 2: Inverter UPS Feedback & Whole-House Flickering
+                  </h3>
+                  <p style="font-size:0.85rem; color:var(--text-secondary); line-height:1.6; margin-bottom:0.75rem;">
+                    <strong>Symptom:</strong> When switching the house over to battery power/inverter output, lights across the entire house begin flickering rapidly, or the RCCB trips.
+                  </p>
+                  <p style="font-size:0.85rem; color:var(--text-secondary); line-height:1.6;">
+                    <strong>Technical Breakdown:</strong> The inverter output neutral was cross-connected back to the main utility neutral bar downstream of the RCCB. This creates a parallel path for neutral currents. When the inverter bonds neutral to earth during backup, current loops back through the RCCB sensing ring, causing immediate trips or floating ground potential discrepancies (leading to LED flickering).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Local Persistence History Logger -->
+            <div class="glass-card">
+              <h2 style="font-size:1.4rem; font-weight:700; color:var(--accent-cyan); margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem;">
+                <span>📝</span> Job Troubleshooting Logger
+              </h2>
+              <p style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:1.5rem;">
+                Document your diagnostics and resolutions to keep a workbook for future reference.
+              </p>
+
+              <form id="rccb-log-form" style="display:flex; flex-direction:column; gap:1.25rem; margin-bottom:2rem;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+                  <div class="form-group">
+                    <label for="rccb-log-title">Job Title / Location</label>
+                    <input type="text" id="rccb-log-title" class="form-input" placeholder="e.g. Living room socket trip" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="rccb-log-mcb">Associated MCB / Circuit</label>
+                    <select id="rccb-log-mcb" class="form-select">
+                      <option value="Kitchen Sockets">Kitchen Sockets (MCB 1)</option>
+                      <option value="Bedroom Outlets">Bedroom Outlets (MCB 2)</option>
+                      <option value="Bathroom Geyser">Bathroom Geyser (MCB 3)</option>
+                      <option value="Lighting Circuits">Lighting Circuits (MCB 4)</option>
+                      <option value="Solar / External">Solar / External Isolator</option>
+                      <option value="Inverter System">Inverter System</option>
+                      <option value="Other / Main">Main Busbar / General</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="rccb-log-findings">Troubleshooting Findings & Symptoms</label>
+                  <textarea id="rccb-log-findings" class="form-input" style="min-height:80px; resize:vertical; font-family:var(--font-sans);" placeholder="e.g. Measured 154k Neutral-to-Earth. Driver made a popping sound and blinked..." required></textarea>
+                </div>
+
+                <div class="form-group">
+                  <label for="rccb-log-resolution">Final Resolution</label>
+                  <input type="text" id="rccb-log-resolution" class="form-input" placeholder="e.g. Replaced damaged conductor in the ceiling junction box." required>
+                </div>
+
+                <button type="submit" class="datasheet-btn" style="align-self:flex-start; padding:0.8rem 2rem; background:linear-gradient(135deg, var(--accent-cyan), #0284c7); font-weight:600;">
+                  Save Log Entry
+                </button>
+              </form>
+
+              <!-- List of Saved Logs -->
+              <h3 style="font-size:1.1rem; font-weight:600; margin-bottom:1rem; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:0.5rem; color:var(--text-primary);">
+                Saved Diagnostics Workbook
+              </h3>
+              <div id="rccb-logs-list" style="display:flex; flex-direction:column; gap:1rem;">
+                <!-- Logs rendered dynamically via JS -->
+                <p id="rccb-logs-empty" style="font-size:0.85rem; color:var(--text-muted); text-align:center; padding:1.5rem;">No logged jobs yet. Fill out the form above to add one.</p>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- TAB PANEL 3: AI DIAGNOSTIC ASSISTANT -->
+          <div id="rccb-tab-chat" class="rccb-tab-content" style="display: none; width: 100%;">
+            <div class="glass-card" style="display:flex; flex-direction:column; min-height:500px; max-height:600px; padding:1.25rem; --card-glow: var(--accent-cyan-glow);">
+              
+              <!-- Chat Header -->
+              <div style="display:flex; align-items:center; gap:0.75rem; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:0.75rem; margin-bottom:1rem;">
+                <div style="width:36px; height:36px; border-radius:50%; background:rgba(6, 182, 212, 0.1); border:1px solid rgba(6, 182, 212, 0.3); display:flex; align-items:center; justify-content:center; color:var(--accent-cyan); font-size:1.25rem;">
+                  🤖
+                </div>
+                <div>
+                  <h3 style="font-size:0.95rem; font-weight:700; color:var(--text-primary);">Diagnostic AI Chatbot</h3>
+                  <span style="font-size:0.7rem; color:var(--accent-green); display:flex; align-items:center; gap:3px;">
+                    <span style="width:6px; height:6px; background:var(--accent-green); border-radius:50%; display:inline-block; animation: pulse 1.5s infinite;"></span>
+                    Offline Expert Mode Active
+                  </span>
+                </div>
+              </div>
+
+              <!-- Chat Message History -->
+              <div id="rccb-chat-history" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:1rem; padding:0.5rem; margin-bottom:1rem; border-radius:8px; background:rgba(0,0,0,0.15); max-height: 320px;">
+                <!-- Initial assistant message -->
+                <div class="chat-msg assistant">
+                  Hello! I am your offline electrical assistant. Tell me about your RCCB tripping issues, load problems, or inverter behaviors (e.g. flickering, noises, or multimeter readings), and I'll analyze the electrical physics for you!
+                </div>
+              </div>
+
+              <!-- Suggestion Quick Chips -->
+              <div style="margin-bottom:0.75rem;">
+                <span style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.5rem;">Suggested Questions:</span>
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap;" id="rccb-chat-chips">
+                  <button class="chat-chip" data-query="Why do my lights flicker when using the inverter?">UPS Inverter Flickering</button>
+                  <button class="chat-chip" data-query="How can a light blink/noise when Neutral is disconnected at DB?">Neutral-Earth Arcing Path</button>
+                  <button class="chat-chip" data-query="Multimeter shows 154k resistance, why does it trip?">9V DC vs 230V AC Breakdown</button>
+                  <button class="chat-chip" data-query="RCCB trips randomly when it rains.">Rain / Moisture Trips</button>
+                </div>
+              </div>
+
+              <!-- Input Area -->
+              <div style="display:flex; gap:0.5rem;">
+                <input type="text" id="rccb-chat-input" class="form-input" style="flex:1; padding:0.8rem 1rem;" placeholder="Ask a doubt or describe a fault (e.g. inverter flickering)...">
+                <button id="rccb-chat-send" class="datasheet-btn" style="padding:0 1.5rem; background:var(--accent-cyan); font-weight:700; color:#fff;">
+                  Send
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      </main>
+  </div>
+
+  <!-- COMPONENT DETAIL MODAL OVERLAY -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal-content">
+      <button class="modal-close" id="modal-close" aria-label="Close details">
+        <svg viewBox="0 0 24 24">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+      
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-title">1N4007</h2>
+        <span class="component-badge diode" id="modal-badge">Diode</span>
+      </div>
+
+      <p class="component-desc" id="modal-desc" style="font-size:1.05rem; margin-bottom:2rem;"></p>
+
+      <div class="modal-layout-grid">
+        <!-- Specs Column -->
+        <div>
+          <h3 class="modal-section-title">Key Specifications</h3>
+          <div class="modal-spec-table" id="modal-specs-table">
+            <!-- Specs injected via JS -->
+          </div>
+        </div>
+
+        <!-- Pinout/Visuals Column -->
+        <div>
+          <h3 class="modal-section-title">Pinout & Package</h3>
+          <div class="modal-pinout-box" id="modal-pinout-layout">
+            <!-- Pinout diagram injected via JS -->
+          </div>
+        </div>
+
+        <!-- Schematic & Connections Section -->
+        <div style="grid-column: span 2; margin-top: 1rem;">
+          <h3 class="modal-section-title">Schematic Symbol & Circuit Connections</h3>
+          <div id="modal-schematic-layout" style="display:flex; justify-content:space-around; align-items:center; gap:2rem; padding:1.25rem; background:rgba(2, 6, 23, 0.4); border:1px solid var(--card-border); border-radius:14px; flex-wrap:wrap; min-height: 120px;">
+            <!-- Schematic injected via JS -->
+          </div>
+        </div>
+
+
+
+        <!-- Modal Footer Actions -->
+        <div class="modal-actions">
+          <button class="datasheet-btn" id="modal-datasheet-link">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" style="margin-right:2px;">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+            Open Online Datasheet
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOAD APPLICATION SCRIPTS -->
+  <script src="data.js"></script>
+  <script src="js/dmm.js"></script>
+  <script src="js/search.js"></script>
+  <script src="js/details.js"></script>
+  <script src="js/tester.js"></script>
+  <script src="js/resistor.js"></script>
+  <script src="js/smd.js"></script>
+  <script src="js/combinations.js"></script>
+  <script src="js/capacitor.js"></script>
+  <script src="js/inductor.js"></script>
+  <script src="js/led.js"></script>
+  <script src="js/physics.js"></script>
+  <script src="js/substitutes.js"></script>
+  <script src="js/rccb.js"></script>
+</body>
+</html>
