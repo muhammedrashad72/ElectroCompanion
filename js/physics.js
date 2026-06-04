@@ -41,13 +41,12 @@ document.addEventListener("DOMContentLoaded", () => {
       ]
     },
     "voltage-divider": {
-      title: "Loaded Voltage Divider Solver",
-      explanation: "A voltage divider produces an output voltage (Vout) that is a fraction of its input voltage (Vin). If a load current (Iload) is connected to the output node, the output voltage drops. Set Iload = 0 for an unloaded divider.",
+      title: "Voltage Divider Solver",
+      explanation: "A voltage divider produces an output voltage (Vout) that is a fraction of its input voltage (Vin). Enter any three parameters to compute the remaining value.",
       params: [
-        { id: "Vin", label: "Input Voltage (Vin)", units: [{ name: "V", val: 1 }, { name: "mV", val: 1e-3 }, { name: "kV", val: 1e3 }] },
+        { id: "Vin", label: "Input Voltage (Vin)", units: [{ name: "mV", val: 1e-3 }, { name: "V", val: 1 }, { name: "kV", val: 1e3 }] },
         { id: "R1", label: "Resistor R1 (Top)", units: [{ name: "Ω", val: 1 }, { name: "kΩ", val: 1e3 }, { name: "MΩ", val: 1e6 }] },
         { id: "R2", label: "Resistor R2 (Bottom)", units: [{ name: "Ω", val: 1 }, { name: "kΩ", val: 1e3 }, { name: "MΩ", val: 1e6 }] },
-        { id: "Iload", label: "Load Current", units: [{ name: "mA", val: 1e-3 }, { name: "A", val: 1 }, { name: "µA", val: 1e-6 }] },
         { id: "Vout", label: "Output Voltage (Vout)", units: [{ name: "V", val: 1 }, { name: "mV", val: 1e-3 }, { name: "kV", val: 1e3 }] }
       ]
     }
@@ -65,6 +64,18 @@ document.addEventListener("DOMContentLoaded", () => {
     if (physicsExplanationText) physicsExplanationText.textContent = config.explanation;
     physicsInputsContainer.innerHTML = "";
     if (physicsCalcError) physicsCalcError.style.display = "none";
+
+    // Show/hide instruction text based on whether it is the Voltage Divider Solver
+    const instructionEl = document.getElementById("physics-instruction-text");
+    if (instructionEl) {
+      if (lawId === "voltage-divider") {
+        instructionEl.textContent = "Enter values into any three boxes. The fourth parameter will be computed automatically.";
+        instructionEl.style.display = "block";
+      } else {
+        instructionEl.textContent = "Enter values into any two boxes. The third parameter will be computed automatically.";
+        instructionEl.style.display = "block";
+      }
+    }
 
     const dividerCircuit = document.getElementById("physics-divider-circuit");
     if (dividerCircuit) {
@@ -117,6 +128,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const opt = document.createElement("option");
         opt.value = u.val;
         opt.textContent = u.name;
+        // Select V and mA as default selected for the Voltage Divider fields
+        if ((param.id === "Vin" && u.name === "V") || (param.id === "Iload" && u.name === "mA") || (param.id === "Vout" && u.name === "V")) {
+          opt.selected = true;
+        }
         select.appendChild(opt);
       });
 
@@ -141,7 +156,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const inputEl = document.getElementById(`phy-${paramId}`);
     const valStr = inputEl ? inputEl.value.trim() : "";
 
-    const maxParams = (physicsState.activeLaw === "voltage-divider") ? 4 : 2;
+    const maxParams = (physicsState.activeLaw === "voltage-divider") ? 3 : 2;
 
     if (valStr !== "") {
       physicsState.lastEdited = physicsState.lastEdited.filter(p => p !== paramId);
@@ -152,22 +167,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } else {
       physicsState.lastEdited = physicsState.lastEdited.filter(p => p !== paramId);
-    }
-
-    // Auto-fill Iload to 0 if Vin, R1, R2 are entered but Iload and Vout are blank
-    if (physicsState.activeLaw === "voltage-divider" && physicsState.lastEdited.length === 3) {
-      const iloadEl = document.getElementById("phy-Iload");
-      const voutEl = document.getElementById("phy-Vout");
-      if (physicsState.lastEdited.includes("Vin") &&
-          physicsState.lastEdited.includes("R1") &&
-          physicsState.lastEdited.includes("R2") &&
-          (!iloadEl || iloadEl.value.trim() === "") &&
-          (!voutEl || voutEl.value.trim() === "")) {
-        if (iloadEl) {
-          iloadEl.value = "0";
-          physicsState.lastEdited.push("Iload");
-        }
-      }
     }
 
     const config = LAW_CONFIGS[physicsState.activeLaw];
@@ -207,7 +206,7 @@ document.addEventListener("DOMContentLoaded", () => {
       let matchedVal = rawVal;
       
       const match = valStr.match(/^([0-9.]+)\s*([a-zµnΩkM]?)$/i);
-      if (match) {
+      if (match && match[2]) {
         matchedVal = parseFloat(match[1]);
         const prefix = match[2];
         if (prefix === 'k') matchedMult = 1e3;
@@ -216,10 +215,10 @@ document.addEventListener("DOMContentLoaded", () => {
         else if (prefix === 'u' || prefix === 'µ') matchedMult = 1e-6;
         else if (prefix === 'n') matchedMult = 1e-9;
         else if (prefix === 'p') matchedMult = 1e-12;
-      }
-      
-      if (!isNaN(matchedVal)) {
-        return matchedVal * matchedMult;
+        
+        if (!isNaN(matchedVal)) {
+          return matchedVal * matchedMult;
+        }
       }
       return rawVal * multiplier;
     }
@@ -413,7 +412,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const Vout = getNumericValue("Vout");
     const R1 = getNumericValue("R1");
     const R2 = getNumericValue("R2");
-    const Iload = getNumericValue("Iload");
+    const Iload = 0;
 
     const vinDisp = getDisplayVal("Vin", "Vin");
     const voutDisp = getDisplayVal("Vout", "Vout");
@@ -424,15 +423,12 @@ document.addEventListener("DOMContentLoaded", () => {
     let vr2Str = "--";
     let i1Str = "--";
     let i2Str = "--";
-    let iloadStr = "0 mA";
 
     let hasI1 = false;
     let hasI2 = false;
-    let hasIload = false;
 
     let dur1 = 1.5;
     let dur2 = 1.5;
-    let durLoad = 1.5;
 
     if (!isNaN(Vin) && !isNaN(Vout)) {
       vr1Str = `${(Vin - Vout).toFixed(2).replace(/\.00$/, "")} V`;
@@ -452,12 +448,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    if (!isNaN(Iload)) {
-      iloadStr = Iload >= 0.001 ? `${(Iload * 1000).toFixed(2).replace(/\.00$/, "")} mA` : `${(Iload * 1e6).toFixed(2).replace(/\.00$/, "")} µA`;
-      hasIload = Iload > 1e-6;
-      durLoad = Math.max(0.2, Math.min(3.0, 0.015 / Iload));
-    }
-
     let flowsHtml = "";
     if (hasI1) {
       flowsHtml += `<path d="M 40 30 L 100 30 L 100 45" class="flow-line" style="animation-duration: ${dur1}s;" />`;
@@ -466,9 +456,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (hasI2) {
       flowsHtml += `<path d="M 100 105 L 100 125" class="flow-line-slow" style="animation-duration: ${dur2}s;" />`;
       flowsHtml += `<path d="M 100 165 L 100 185" class="flow-line-slow" style="animation-duration: ${dur2}s;" />`;
-    }
-    if (hasIload) {
-      flowsHtml += `<path d="M 100 105 L 180 105" class="flow-line-load" style="animation-duration: ${durLoad}s;" />`;
     }
 
     dividerCircuit.innerHTML = `
@@ -479,7 +466,7 @@ document.addEventListener("DOMContentLoaded", () => {
               stroke-dashoffset: -20;
             }
           }
-          .flow-line, .flow-line-slow, .flow-line-load {
+          .flow-line, .flow-line-slow {
             stroke: #a78bfa;
             stroke-width: 2.5;
             stroke-dasharray: 4, 6;
@@ -489,9 +476,6 @@ document.addEventListener("DOMContentLoaded", () => {
           }
           .flow-line-slow {
             stroke: #10b981;
-          }
-          .flow-line-load {
-            stroke: #ef4444;
           }
         </style>
 
@@ -531,7 +515,6 @@ document.addEventListener("DOMContentLoaded", () => {
         <circle cx="180" cy="105" r="4.5" fill="var(--accent-purple)" stroke="#1e1b4b" stroke-width="1.5" />
         <text x="186" y="93" fill="var(--text-secondary)" font-family="sans-serif" font-size="9" font-weight="600">Output</text>
         <text x="186" y="117" fill="var(--accent-purple)" font-family="monospace" font-size="9.5" font-weight="bold">${voutDisp}</text>
-        <text x="186" y="129" fill="#ef4444" font-family="monospace" font-size="8" font-weight="bold">Load = ${iloadStr}</text>
 
         <!-- Resistor R2 -->
         <g>

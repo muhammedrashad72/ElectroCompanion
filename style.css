@@ -1494,6 +1494,17 @@ body {
 }
 
 /* --- RESPONSIVE MEDIA QUERIES --- */
+.interactive-visualizer svg,
+#combo-schematic-container svg,
+#physics-divider-circuit svg,
+#capacitor-svg,
+#smd-svg,
+#resistor-svg,
+#inductor-svg {
+  max-width: 100%;
+  height: auto;
+}
+
 @media (max-width: 992px) {
   .tool-grid {
     grid-template-columns: 1fr;
@@ -1516,7 +1527,6 @@ body {
     top: 0;
     left: 0;
     right: 0;
-    width: 100%;
     height: 125px;
     margin: 0;
     border: none;
@@ -1528,7 +1538,7 @@ body {
     padding: 0.5rem 1rem;
     gap: 0.5rem;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-    height: 125px;
+    z-index: 1000;
   }
 
   .dmm-brand, .dmm-jacks-row {
@@ -1607,6 +1617,80 @@ body {
   
   .modal-actions {
     grid-column: 1;
+  }
+}
+
+/* Automatic Screen Fitting & Scaling for Mobile Phones */
+@media (max-width: 480px) {
+  .multimeter-body {
+    height: 105px !important;
+    padding: 0.25rem 0.5rem !important;
+    gap: 0.25rem !important;
+  }
+  
+  .dmm-lcd-case {
+    flex: 1.1 !important;
+    padding: 2px !important;
+  }
+  
+  .dmm-lcd-glass {
+    min-height: 68px !important;
+    padding: 0.2rem 0.35rem !important;
+  }
+  
+  .dmm-lcd-indicator, .dmm-lcd-battery {
+    font-size: 0.55rem !important;
+  }
+  
+  .dmm-lcd-readout {
+    font-size: 1.3rem !important;
+    margin: 0.1rem 0 !important;
+  }
+  
+  .dmm-lcd-footer {
+    font-size: 0.5rem !important;
+  }
+  
+  .dmm-buttons-row {
+    gap: 0.25rem !important;
+  }
+  
+  .dmm-phys-btn {
+    min-width: 55px !important;
+    padding: 0.2rem 0.3rem !important;
+  }
+  
+  .dmm-phys-btn .btn-cap {
+    width: 8px !important;
+    height: 3px !important;
+  }
+  
+  .dmm-phys-btn .btn-label {
+    font-size: 0.55rem !important;
+  }
+  
+  .dmm-dial-area {
+    width: 85px !important;
+    height: 85px !important;
+    transform: scale(0.55) !important;
+  }
+  
+  .main-content {
+    margin-top: 105px !important;
+    padding: 1rem !important;
+  }
+  
+  .form-control-row {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+  
+  .results-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .glass-card {
+    padding: 1rem !important;
   }
 }
 
