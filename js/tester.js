@@ -59,7 +59,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <rect x="15" y="15" width="90" height="155" rx="10" fill="#1e293b" stroke="#eab308" stroke-width="3" />
             <rect x="23" y="23" width="74" height="42" rx="4" fill="#0891b2" id="sim-lcd-screen" style="transition: background 0.3s ease;" />
             <text id="sim-dmm-lcd" x="60" y="52" fill="#020617" font-family="monospace" font-size="18" font-weight="bold" text-anchor="middle">OL</text>
-            <text x="60" y="34" fill="#020617" font-family="monospace" font-size="7" font-weight="bold" text-anchor="middle">AUTO DC</text>
+            <text x="60" y="34" fill="#020617" font-family="monospace" font-size="8.5" font-weight="bold" text-anchor="middle">AUTO DC</text>
             <circle cx="60" cy="100" r="16" fill="#111827" stroke="#4b5563" stroke-width="1.5" />
             <line id="sim-dmm-dial" x1="60" y1="100" x2="60" y2="88" stroke="#ef4444" stroke-width="3" stroke-linecap="round" />
             <circle cx="42" cy="148" r="6" fill="#111827" stroke="#334155" stroke-width="1.5" />
@@ -175,8 +175,8 @@ document.addEventListener("DOMContentLoaded", () => {
         <line x1="190" y1="100" x2="370" y2="100" stroke="#64748b" stroke-width="3" stroke-linecap="round" />
         <rect x="235" y="85" width="90" height="30" rx="3" fill="#1e293b" stroke="#334155" stroke-width="2" />
         <rect x="305" y="85" width="10" height="30" fill="#94a3b8" />
-        <text x="215" y="90" fill="#94a3b8" font-family="monospace" font-size="10" font-weight="bold">A</text>
-        <text x="345" y="90" fill="#94a3b8" font-family="monospace" font-size="10" font-weight="bold">K</text>
+        <text x="215" y="90" fill="#94a3b8" font-family="monospace" font-size="12" font-weight="bold">A</text>
+        <text x="345" y="90" fill="#94a3b8" font-family="monospace" font-size="12" font-weight="bold">K</text>
       `;
     }
     else if (typeLower === "transistor" || typeLower === "regulator") {
@@ -186,13 +186,13 @@ document.addEventListener("DOMContentLoaded", () => {
         <line x1="255" y1="115" x2="255" y2="155" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" />
         <line x1="280" y1="115" x2="280" y2="155" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" />
         <line x1="305" y1="115" x2="305" y2="155" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" />
-        <text x="255" y="167" fill="#64748b" font-family="monospace" font-size="9" font-weight="bold" text-anchor="middle">
+        <text x="255" y="167" fill="#64748b" font-family="monospace" font-size="11" font-weight="bold" text-anchor="middle">
           ${comp.pinout.pins[0].name[0]}
         </text>
-        <text x="280" y="167" fill="#64748b" font-family="monospace" font-size="9" font-weight="bold" text-anchor="middle">
+        <text x="280" y="167" fill="#64748b" font-family="monospace" font-size="11" font-weight="bold" text-anchor="middle">
           ${comp.pinout.pins[1].name[0]}
         </text>
-        <text x="305" y="167" fill="#64748b" font-family="monospace" font-size="9" font-weight="bold" text-anchor="middle">
+        <text x="305" y="167" fill="#64748b" font-family="monospace" font-size="11" font-weight="bold" text-anchor="middle">
           ${comp.pinout.pins[2].name[0]}
         </text>
       `;
@@ -209,10 +209,10 @@ document.addEventListener("DOMContentLoaded", () => {
         <line x1="300" y1="95" x2="320" y2="95" stroke="#94a3b8" stroke-width="3" />
         <line x1="300" y1="115" x2="320" y2="115" stroke="#94a3b8" stroke-width="3" />
         <line x1="300" y1="135" x2="320" y2="135" stroke="#94a3b8" stroke-width="3" />
-        <text x="210" y="78" fill="#64748b" font-family="monospace" font-size="8" font-weight="bold">1</text>
-        <text x="210" y="138" fill="#64748b" font-family="monospace" font-size="8" font-weight="bold">4</text>
-        <text x="325" y="78" fill="#64748b" font-family="monospace" font-size="8" font-weight="bold">8</text>
-        <text x="325" y="138" fill="#64748b" font-family="monospace" font-size="8" font-weight="bold">5</text>
+        <text x="210" y="78" fill="#64748b" font-family="monospace" font-size="11" font-weight="bold">1</text>
+        <text x="210" y="138" fill="#64748b" font-family="monospace" font-size="11" font-weight="bold">4</text>
+        <text x="325" y="78" fill="#64748b" font-family="monospace" font-size="11" font-weight="bold">8</text>
+        <text x="325" y="138" fill="#64748b" font-family="monospace" font-size="11" font-weight="bold">5</text>
       `;
     }
     else {

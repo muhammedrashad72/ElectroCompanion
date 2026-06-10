@@ -1520,7 +1520,7 @@ body {
 
 @media (max-width: 768px) {
   :root {
-    --dial-radius: -65px;
+    --dial-radius: -60px;
   }
 
   html, body, .app-container {
@@ -1596,13 +1596,18 @@ body {
   }
 
   .dmm-dial-area {
-    width: 110px;
-    height: 110px;
+    width: 90px;
+    height: 90px;
     margin: 0;
-    margin-right: 25px !important;
-    transform: scale(0.7);
+    margin-right: 20px !important;
+    transform: scale(0.78);
     transform-origin: center;
     flex-shrink: 0;
+  }
+
+  .dial-label {
+    font-size: 0.85rem !important;
+    font-weight: 800;
   }
 
   .main-content {
@@ -1633,6 +1638,35 @@ body {
   .modal-actions {
     grid-column: 1;
   }
+
+  /* General mobile text scaling and readability overrides */
+  .glass-card h2,
+  .content-header h1 {
+    font-size: 1.4rem !important;
+  }
+  
+  .glass-card h3 {
+    font-size: 1.15rem !important;
+  }
+  
+  .glass-card p,
+  .component-desc,
+  #checking-comp-desc,
+  .chat-msg,
+  .calc-result-sub,
+  .welcome-instructions ol li {
+    font-size: 0.95rem !important;
+    line-height: 1.6 !important;
+  }
+  
+  .form-group label {
+    font-size: 0.85rem !important;
+  }
+  
+  .form-select,
+  .form-input {
+    font-size: 1rem !important;
+  }
 }
 
 /* Automatic Screen Fitting & Scaling for Mobile Phones */
@@ -1642,62 +1676,68 @@ body {
   }
 
   .multimeter-body {
-    height: 105px !important;
+    height: 118px !important;
     padding: 0.25rem 0.5rem !important;
     gap: 0.25rem !important;
   }
   
   .dmm-lcd-case {
-    flex: 1.1 !important;
-    padding: 2px !important;
+    flex: 1.25 !important;
+    padding: 3px !important;
   }
   
   .dmm-lcd-glass {
-    min-height: 68px !important;
-    padding: 0.2rem 0.35rem !important;
+    min-height: 80px !important;
+    padding: 0.3rem 0.45rem !important;
   }
   
   .dmm-lcd-indicator, .dmm-lcd-battery {
-    font-size: 0.55rem !important;
+    font-size: 0.7rem !important;
   }
   
   .dmm-lcd-readout {
-    font-size: 1.3rem !important;
-    margin: 0.1rem 0 !important;
+    font-size: 1.6rem !important;
+    margin: 0.15rem 0 !important;
   }
   
   .dmm-lcd-footer {
-    font-size: 0.5rem !important;
+    font-size: 0.65rem !important;
   }
   
   .dmm-buttons-row {
-    gap: 0.25rem !important;
+    gap: 0.3rem !important;
   }
   
   .dmm-phys-btn {
-    min-width: 55px !important;
-    padding: 0.2rem 0.3rem !important;
+    min-width: 60px !important;
+    padding: 0.2rem 0.4rem !important;
   }
   
   .dmm-phys-btn .btn-cap {
-    width: 8px !important;
+    width: 9px !important;
     height: 3px !important;
   }
   
   .dmm-phys-btn .btn-label {
-    font-size: 0.55rem !important;
+    font-size: 0.65rem !important;
   }
   
   .dmm-dial-area {
-    width: 85px !important;
-    height: 85px !important;
-    margin-right: 35px !important;
-    transform: scale(0.52) !important;
+    width: 72px !important;
+    height: 72px !important;
+    margin-right: 18px !important;
+    transform: scale(0.64) !important;
+    transform-origin: center center;
+  }
+
+  .dial-label {
+    font-size: 0.95rem !important;
+    font-weight: 800;
   }
   
   .main-content {
-    margin-top: 105px !important;
-    padding: 1rem !important;
+    margin-top: 118px !important;
+    padding: 1.1rem !important;
   }
   
   .form-control-row {
@@ -1710,7 +1750,39 @@ body {
   }
   
   .glass-card {
-    padding: 1rem !important;
+    padding: 1.1rem !important;
+  }
+
+  /* Narrow mobile specific text scaling overrides */
+  .glass-card h2 {
+    font-size: 1.3rem !important;
+  }
+  
+  .glass-card h3 {
+    font-size: 1.1rem !important;
+  }
+  
+  .glass-card p,
+  .component-desc,
+  #checking-comp-desc,
+  .chat-msg,
+  .welcome-instructions ol li {
+    font-size: 0.9rem !important;
+    line-height: 1.55 !important;
+  }
+  
+  .form-group label {
+    font-size: 0.8rem !important;
+  }
+  
+  .form-select,
+  .form-input {
+    font-size: 0.95rem !important;
+  }
+
+  #simulation-status-log {
+    font-size: 0.9rem !important;
+    padding: 0.4rem !important;
   }
 }
 
