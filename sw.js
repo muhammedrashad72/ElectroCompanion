@@ -1,4 +1,4 @@
-const CACHE_NAME = "electrocompanion-cache-v7";
+const CACHE_NAME = "electrocompanion-cache-v13";
 const ASSETS = [
   "./",
   "./index.html",
@@ -17,7 +17,11 @@ const ASSETS = [
   "./js/physics.js",
   "./js/substitutes.js",
   "./js/rccb.js",
-  "./js/continuity.js"
+  "./js/repair.js",
+  "./images/tecno_thermal.png",
+  "./images/samsung_charging_ic.png",
+  "./images/samsung_pd_ic_1.png",
+  "./images/samsung_pd_ic_2.png"
 ];
 
 // Install event - caching assets

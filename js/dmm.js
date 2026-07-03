@@ -27,11 +27,6 @@ document.addEventListener("DOMContentLoaded", () => {
         window.stopSimulation();
       }
     }
-    if (window.currentView === "continuity-view" && viewId !== "continuity-view") {
-      if (typeof window.stopContinuityTester === "function") {
-        window.stopContinuityTester();
-      }
-    }
     const views = document.querySelectorAll(".view-section");
     views.forEach(view => {
       view.classList.remove("active");
@@ -54,7 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
     { angle: 54, view: "laws-view", name: "PHYSICS LAW" },
     { angle: 90, view: "substitutes-view", name: "ALT DIODE/TR" },
     { angle: 126, view: "checking-view", name: "COMP CHECKING" },
-    { angle: 162, view: "continuity-view", name: "AUDIO CONT" }
+    { angle: 162, view: "repair-view", name: "REPAIR NOTES" }
   ];
 
   // Sound and Haptics
@@ -169,11 +164,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (typeof window.initRccbGuide === "function") {
         window.initRccbGuide();
       }
-    } else if (mode.view === "continuity-view") {
-      window.updateDmmLcd("CoNt", "", "AUDIO CONTINUITY");
-      if (typeof window.initContinuityTester === "function") {
-        window.initContinuityTester();
-      }
+    } else if (mode.view === "repair-view") {
+      window.updateDmmLcd("rEP", "", "REPAIR NOTES");
     }
   }
 
@@ -200,7 +192,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
     // Update active labels
     document.querySelectorAll(".dial-label").forEach(lbl => {
-      const lblAngle = parseInt(lbl.getAttribute("data-angle"));
+      const lblAngle = parseFloat(lbl.getAttribute("data-angle"));
       if (lblAngle === angle) {
         lbl.classList.add("active");
       } else {
@@ -281,7 +273,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".dial-label").forEach(lbl => {
     lbl.addEventListener("click", () => {
       initAudio();
-      const angle = parseInt(lbl.getAttribute("data-angle"));
+      const angle = parseFloat(lbl.getAttribute("data-angle"));
       const mode = DIAL_MODES.find(m => m.angle === angle);
       if (mode) {
         currentKnobAngle = angle;
