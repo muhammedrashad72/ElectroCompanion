@@ -11,12 +11,17 @@
     <link rel="stylesheet" href="style.css">
   <link rel="manifest" href="manifest.json">
   <script>
-    // PWA Service Worker Registration
+    // Unregister service worker and clear caches to ensure the latest code is loaded directly
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js')
-          .then(reg => console.log('Service Worker registered successfully!', reg.scope))
-          .catch(err => console.error('Service Worker registration failed:', err));
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then(keys => {
+        keys.forEach(key => caches.delete(key));
       });
     }
 
@@ -1374,6 +1379,6 @@
   <script src="js/physics.js"></script>
   <script src="js/substitutes.js"></script>
   <script src="js/rccb.js"></script>
-  <script src="js/continuity.js?v=5"></script>
+  <script src="js/continuity.js?v=6"></script>
 </body>
 </html>

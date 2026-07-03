@@ -246,24 +246,19 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function evaluateCableInsertion() {
-    if (hasWiredHardware) {
+    if (hasWiredHardware || isProbeActive) {
       isCableInserted = true;
-    } else if (isProbeActive && rmsHistory.length >= HISTORY_SIZE) {
-      // Analyze standard deviation of RMS level (acoustic variance)
-      const stdDev = getRmsVariance();
-      const currentRms = currentMicLevel();
-      
-      // If the browser is in a test environment with a flat silent dummy microphone (currentRms == 0, stdDev == 0)
-      // and hasWiredHardware is false, we treat it as disconnected.
-      if (currentRms < 0.00001 && stdDev < 0.00001) {
-        isCableInserted = false;
-      } else {
-        // An open wire cable or absolute short will have a flat signal level (stdDev < 0.00012)
-        // A built-in microphone has active fluctuations from room noise (stdDev > 0.00012)
-        isCableInserted = (stdDev < 0.00012);
-      }
     } else {
       isCableInserted = false;
+    }
+
+    // Headless automated test dummy mic check
+    if (isProbeActive && !hasWiredHardware) {
+      const stdDev = getRmsVariance();
+      const currentRms = currentMicLevel();
+      if (currentRms < 0.00001 && stdDev < 0.00001) {
+        isCableInserted = false;
+      }
     }
 
     if (contCableStatus) {
@@ -280,10 +275,30 @@ document.addEventListener("DOMContentLoaded", () => {
   // Listen to device change (cable plugged in / out)
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
     navigator.mediaDevices.addEventListener("devicechange", () => {
-      updateCableStatus();
-      // If mic is running, restart to pick up the new device automatically
       if (isProbeActive) {
-        restartMicProbe();
+        navigator.mediaDevices.enumerateDevices().then(devices => {
+          const inputs = devices.filter(d => d.kind === 'audioinput');
+          const hasWired = inputs.some(d => {
+            const label = d.label.toLowerCase();
+            return label.includes('headset') || 
+                   label.includes('wired') || 
+                   label.includes('external') || 
+                   label.includes('jack') || 
+                   label.includes('line') || 
+                   label.includes('handsfree') ||
+                   label.includes('3.5mm');
+          });
+          if (!hasWired) {
+            stopMicProbe();
+            alert("Wired Headset Cable Unplugged! Continuity tester probe deactivated.");
+          } else {
+            restartMicProbe();
+          }
+        }).catch(() => {
+          updateCableStatus();
+        });
+      } else {
+        updateCableStatus();
       }
     });
   }
@@ -458,22 +473,80 @@ document.addEventListener("DOMContentLoaded", () => {
     updateCableStatus();
   }
 
+  // Query microphone permission, enumerate devices, and select strictly the wired mic
+  function obtainWiredMicStream() {
+    return navigator.mediaDevices.getUserMedia({ 
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    })
+    .then(tempStream => {
+      return navigator.mediaDevices.enumerateDevices().then(devices => {
+        const inputs = devices.filter(d => d.kind === 'audioinput');
+        
+        // Find input device matching external headset microphone
+        const wiredMic = inputs.find(d => {
+          const label = d.label.toLowerCase();
+          return label.includes('headset') || 
+                 label.includes('wired') || 
+                 label.includes('external') || 
+                 label.includes('jack') || 
+                 label.includes('line') || 
+                 label.includes('handsfree') ||
+                 label.includes('3.5mm');
+        });
+
+        // Also check if current stream track is using the headset mic
+        const activeTrack = tempStream.getAudioTracks()[0];
+        const trackLabel = activeTrack ? activeTrack.label.toLowerCase() : '';
+        const isWiredTrack = trackLabel.includes('headset') || 
+                              trackLabel.includes('wired') || 
+                              trackLabel.includes('external') || 
+                              trackLabel.includes('jack') || 
+                              trackLabel.includes('line') || 
+                              trackLabel.includes('handsfree') ||
+                              trackLabel.includes('3.5mm');
+
+        if (wiredMic) {
+          // Stop temporary stream
+          tempStream.getTracks().forEach(t => t.stop());
+          // Request exact wired mic device
+          return navigator.mediaDevices.getUserMedia({
+            audio: {
+              deviceId: { exact: wiredMic.deviceId },
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false
+            }
+          });
+        } else if (isWiredTrack) {
+          // Current stream is already on the headset microphone
+          return tempStream;
+        } else {
+          // No wired microphone connected, release stream and throw error
+          tempStream.getTracks().forEach(t => t.stop());
+          throw new Error("NoWiredHeadset");
+        }
+      });
+    });
+  }
+
   function restartMicProbe() {
     if (micStream) {
       micStream.getTracks().forEach(track => track.stop());
     }
-    navigator.mediaDevices.getUserMedia({ 
-      audio: { 
-        echoCancellation: false, 
-        noiseSuppression: false, 
-        autoGainControl: false 
-      } 
-    })
+    obtainWiredMicStream()
     .then(stream => {
       startMicMonitoring(stream);
     })
     .catch(err => {
       console.warn("Microphone restart failed:", err);
+      stopMicProbe();
+      if (err.message === "NoWiredHeadset") {
+        alert("Wired Headset Cable Unplugged! Continuity tester probe deactivated.");
+      }
     });
   }
 
@@ -596,15 +669,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (btnStartProbe) {
     btnStartProbe.addEventListener("click", () => {
-      navigator.mediaDevices.getUserMedia({ 
-        audio: { 
-          echoCancellation: false, 
-          noiseSuppression: false, 
-          autoGainControl: false 
-        } 
-      })
+      obtainWiredMicStream()
       .then(stream => {
         isProbeActive = true;
+        isCableInserted = true;
+        hasWiredHardware = true;
+
         btnStartProbe.style.display = "none";
         if (btnStopProbe) btnStopProbe.style.display = "inline-block";
         if (btnCalibrateProbe) btnCalibrateProbe.disabled = false;
@@ -618,8 +688,17 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 300);
       })
       .catch(err => {
-        console.error("Microphone access denied: ", err);
-        alert("Microphone permission denied! You can still test using the physical Headset Volume/Hook Buttons or the 'Simulate Touch' button.");
+        if (err.message === "NoWiredHeadset") {
+          alert("Wired Headset Cable Not Detected!\n\nPlease insert your continuity tester wire cable (plugged into the 3.5mm headphone jack with a 2.2K ohm resistor bridging MIC and GND) before enabling the probe.");
+          isProbeActive = false;
+          isCableInserted = false;
+          hasWiredHardware = false;
+          updateCableStatus();
+          updateContinuityState();
+        } else {
+          console.error("Microphone access denied: ", err);
+          alert("Microphone permission denied! You can still test using the physical Headset Volume/Hook Buttons or the 'Simulate Touch' button.");
+        }
       });
     });
   }
