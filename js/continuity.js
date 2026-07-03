@@ -1,67 +1,35 @@
-// js/continuity.js - Audio Jack Continuity Tester Controller
+// js/continuity.js - Simplified Audio Jack Continuity Tester Controller
 
 document.addEventListener("DOMContentLoaded", () => {
-  // DOM Elements - Controls
-  const btnStartProbe = document.getElementById("btn-start-probe");
-  const btnStopProbe = document.getElementById("btn-stop-probe");
-  const btnSimTouch = document.getElementById("btn-sim-touch");
-  const btnCalibrateProbe = document.getElementById("btn-calibrate-probe");
-
+  // DOM Elements
+  const contPowerToggle = document.getElementById("cont-power-toggle");
   const contStatusIndicator = document.getElementById("cont-status-indicator");
   const contStatusText = document.getElementById("cont-status-text");
   const contSubText = document.getElementById("cont-sub-text");
-  const contCableStatus = document.getElementById("cont-cable-status");
-
-  const contLevelBar = document.getElementById("cont-level-bar");
-  const contLevelPercent = document.getElementById("cont-level-percent");
-  const contOscilloscope = document.getElementById("cont-oscilloscope");
-
-  const contThreshold = document.getElementById("cont-threshold");
-  const contThresholdVal = document.getElementById("cont-threshold-val");
   const contVolume = document.getElementById("cont-volume");
   const contVolumeVal = document.getElementById("cont-volume-val");
 
-  // SVG Probes for Animation
-  const guideBlackProbe = document.getElementById("guide-black-probe");
-  const guideRedProbe = document.getElementById("guide-red-probe");
-
-  // Web Audio Variables
+  // Web Audio Context
   let audioCtx = null;
   let micStream = null;
-  let micSource = null;
-  let analyser = null;
-  let animationFrameId = null;
-
-  // Buzzer Audio Variables
   let buzzerOsc = null;
   let buzzerGain = null;
-
-  // Silent Background Audio for MediaSession takeover
+  
+  // Background Silent Audio for MediaSession takeover
   let silentAudio = null;
 
   // State Variables
   let isProbeActive = false;
-  let isSimTouch = false;
   let isKeyTouch = false;
-  let isCalibrating = false;
   let currentVolume = 0.5; // Default 50%
-  let silenceThreshold = 0.0015; // Lower default threshold for wire shorting
-  
-  // Cable Connection Status
-  let isCableInserted = false;
-  let hasWiredHardware = false;
-  
-  // History for Acoustic Variance Analysis
-  const rmsHistory = [];
-  const HISTORY_SIZE = 20;
 
   // DMM LCD reference
   const dmmLcd = document.getElementById("dmm-lcd");
 
   // ==================== KEY INTERCEPTION & BLOCKING ====================
-  // Intercept volume and media buttons globally when continuity screen is active
+  // Intercept volume and media buttons globally to block default OS actions
   const blockKeys = (e) => {
-    if (window.currentView !== "continuity-view") return;
+    if (window.currentView !== "continuity-view" || !isProbeActive) return;
 
     const keysToBlock = [
       'VolumeUp', 'VolumeDown', 
@@ -178,149 +146,20 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // ==================== WIRING GUIDE ANIMATION ====================
-
-  function animateProbes(touch) {
-    if (!guideBlackProbe || !guideRedProbe) return;
-
-    if (touch) {
-      guideBlackProbe.setAttribute("transform", "translate(210, 130) rotate(-15)");
-      guideRedProbe.setAttribute("transform", "translate(210, 135) rotate(15)");
-    } else {
-      guideBlackProbe.setAttribute("transform", "translate(230, 115)");
-      guideRedProbe.setAttribute("transform", "translate(230, 150)");
-    }
-  }
-
-  // ==================== CABLE DETECTION LOGIC ====================
-
-  function addRmsToHistory(rms) {
-    rmsHistory.push(rms);
-    if (rmsHistory.length > HISTORY_SIZE) {
-      rmsHistory.shift();
-    }
-  }
-
-  function getRmsVariance() {
-    if (rmsHistory.length < HISTORY_SIZE) return 1.0; // Assume built-in mic if not loaded
-    const mean = rmsHistory.reduce((a, b) => a + b, 0) / rmsHistory.length;
-    const sqDiffs = rmsHistory.map(v => (v - mean) ** 2);
-    const variance = sqDiffs.reduce((a, b) => a + b, 0) / rmsHistory.length;
-    return Math.sqrt(variance); // Standard Deviation
-  }
-
-  function updateCableStatus() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-      evaluateCableInsertion();
-      return;
-    }
-
-    navigator.mediaDevices.enumerateDevices().then(devices => {
-      const inputs = devices.filter(d => d.kind === 'audioinput');
-      hasWiredHardware = inputs.some(d => {
-        const label = d.label.toLowerCase();
-        return label.includes('headset') || 
-               label.includes('wired') || 
-               label.includes('external') || 
-               label.includes('line') || 
-               label.includes('jack');
-      });
-
-      if (micStream) {
-        const activeTrack = micStream.getAudioTracks()[0];
-        const trackLabel = activeTrack ? activeTrack.label.toLowerCase() : '';
-        if (trackLabel.includes('headset') || 
-            trackLabel.includes('wired') || 
-            trackLabel.includes('external') || 
-            trackLabel.includes('line') || 
-            trackLabel.includes('jack')) {
-          hasWiredHardware = true;
-        }
-      }
-
-      evaluateCableInsertion();
-    }).catch(err => {
-      console.warn("Device enumeration failed, relying on acoustic check:", err);
-      evaluateCableInsertion();
-    });
-  }
-
-  function evaluateCableInsertion() {
-    if (hasWiredHardware || isProbeActive) {
-      isCableInserted = true;
-    } else {
-      isCableInserted = false;
-    }
-
-    // Headless automated test dummy mic check
-    if (isProbeActive && !hasWiredHardware) {
-      const stdDev = getRmsVariance();
-      const currentRms = currentMicLevel();
-      if (currentRms < 0.00001 && stdDev < 0.00001) {
-        isCableInserted = false;
-      }
-    }
-
-    if (contCableStatus) {
-      if (isCableInserted) {
-        contCableStatus.textContent = "⚡ CABLE DETECTED (Wire Probe Active)";
-        contCableStatus.style.color = "var(--accent-green)";
-      } else {
-        contCableStatus.textContent = "⚠️ CABLE DISCONNECTED (Internal Mic Active)";
-        contCableStatus.style.color = "var(--accent-amber)";
-      }
-    }
-  }
-
-  // Listen to device change (cable plugged in / out)
-  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-    navigator.mediaDevices.addEventListener("devicechange", () => {
-      if (isProbeActive) {
-        navigator.mediaDevices.enumerateDevices().then(devices => {
-          const inputs = devices.filter(d => d.kind === 'audioinput');
-          const hasWired = inputs.some(d => {
-            const label = d.label.toLowerCase();
-            return label.includes('headset') || 
-                   label.includes('wired') || 
-                   label.includes('external') || 
-                   label.includes('jack') || 
-                   label.includes('line') || 
-                   label.includes('handsfree') ||
-                   label.includes('3.5mm');
-          });
-          if (!hasWired) {
-            stopMicProbe();
-            alert("Wired Headset Cable Unplugged! Continuity tester probe deactivated.");
-          } else {
-            restartMicProbe();
-          }
-        }).catch(() => {
-          updateCableStatus();
-        });
-      } else {
-        updateCableStatus();
-      }
-    });
-  }
-
   // ==================== STATE MANAGEMENT ====================
 
   function updateContinuityState() {
-    // Continuity is detected ONLY if:
-    // 1. We are simulating a touch via button, OR
-    // 2. We got a key event (headset hook / volume key short), OR
-    // 3. Audio stream is active, cable is verified plugged in, AND the mic level is below the short threshold.
-    const isContinuityDetected = isSimTouch || isKeyTouch || 
-      (isProbeActive && isCableInserted && currentMicLevel() < silenceThreshold);
+    // Continuity is detected only if the tester is active (ON) and the hook button is shorted/pressed
+    const isContinuityDetected = isProbeActive && isKeyTouch;
 
-    // Update Buzzer
+    // Update Buzzer Sound
     if (isContinuityDetected) {
       setBuzzerVolume(currentVolume);
     } else {
       setBuzzerVolume(0);
     }
 
-    // Update View Status
+    // Update UI Panel
     if (contStatusIndicator && contStatusText && contSubText) {
       if (isContinuityDetected) {
         contStatusIndicator.style.backgroundColor = "var(--accent-green)";
@@ -329,25 +168,17 @@ document.addEventListener("DOMContentLoaded", () => {
         contStatusText.style.color = "var(--accent-green)";
         contSubText.textContent = "Probes connected (resistance < 30Ω)";
       } else if (isProbeActive) {
-        if (isCableInserted) {
-          contStatusIndicator.style.backgroundColor = "var(--accent-blue)";
-          contStatusIndicator.style.boxShadow = "0 0 12px var(--accent-blue-glow)";
-          contStatusText.textContent = "PROBE READY (OPEN)";
-          contStatusText.style.color = "var(--accent-blue)";
-          contSubText.textContent = "Touch probes to check continuity";
-        } else {
-          contStatusIndicator.style.backgroundColor = "var(--accent-amber)";
-          contStatusIndicator.style.boxShadow = "0 0 12px var(--accent-amber-glow)";
-          contStatusText.textContent = "CABLE UNPLUGGED";
-          contStatusText.style.color = "var(--accent-amber)";
-          contSubText.textContent = "Please plug in wire probe cable";
-        }
+        contStatusIndicator.style.backgroundColor = "var(--accent-blue)";
+        contStatusIndicator.style.boxShadow = "0 0 12px var(--accent-blue-glow)";
+        contStatusText.textContent = "READY (OPEN)";
+        contStatusText.style.color = "var(--accent-blue)";
+        contSubText.textContent = "Probes open. Touch them together to test.";
       } else {
         contStatusIndicator.style.backgroundColor = "#64748b";
         contStatusIndicator.style.boxShadow = "none";
-        contStatusText.textContent = "TESTER INACTIVE";
+        contStatusText.textContent = "TESTER OFF";
         contStatusText.style.color = "var(--text-secondary)";
-        contSubText.textContent = "Enable microphone probe or simulate touch";
+        contSubText.textContent = "Turn on the switch to begin";
       }
     }
 
@@ -359,381 +190,80 @@ document.addEventListener("DOMContentLoaded", () => {
           dmmLcd.classList.remove("backlight-cyan", "backlight-orange", "backlight-green");
           dmmLcd.classList.add("backlight-green");
         }
-      } else if (isProbeActive && !isCableInserted) {
-        window.updateDmmLcd("Plug", "In", "CABLE REQ");
-        if (dmmLcd) {
-          dmmLcd.classList.remove("backlight-cyan", "backlight-orange", "backlight-green");
-          dmmLcd.classList.add("backlight-orange");
-        }
-      } else {
+      } else if (isProbeActive) {
         window.updateDmmLcd("OL", "", "OPEN CIRCUIT");
         if (dmmLcd) {
           dmmLcd.classList.remove("backlight-cyan", "backlight-orange", "backlight-green");
           dmmLcd.classList.add("backlight-cyan");
         }
-      }
-    }
-
-    animateProbes(isContinuityDetected);
-  }
-
-  let lastCalculatedRms = 1.0;
-  function currentMicLevel() {
-    return lastCalculatedRms;
-  }
-
-  // ==================== AUDIO PROCESSING ====================
-
-  function startMicMonitoring(stream) {
-    initAudioContext();
-    if (!audioCtx) return;
-
-    micStream = stream;
-    micSource = audioCtx.createMediaStreamSource(stream);
-    analyser = audioCtx.createAnalyser();
-    
-    analyser.fftSize = 256;
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
-    micSource.connect(analyser);
-
-    const canvas = contOscilloscope;
-    const canvasCtx = canvas ? canvas.getContext("2d") : null;
-
-    function drawWave() {
-      if (!isProbeActive) return;
-
-      animationFrameId = requestAnimationFrame(drawWave);
-      analyser.getByteTimeDomainData(dataArray);
-
-      // Draw Oscilloscope Wave
-      if (canvas && canvasCtx) {
-        const width = canvas.width;
-        const height = canvas.height;
-        canvasCtx.fillStyle = "#0f172a";
-        canvasCtx.fillRect(0, 0, width, height);
-
-        canvasCtx.strokeStyle = "rgba(255, 255, 255, 0.03)";
-        canvasCtx.lineWidth = 1;
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(0, height / 2);
-        canvasCtx.lineTo(width, height / 2);
-        canvasCtx.moveTo(width / 2, 0);
-        canvasCtx.lineTo(width / 2, height);
-        canvasCtx.stroke();
-
-        canvasCtx.strokeStyle = isProbeActive ? (isCableInserted ? "var(--accent-cyan)" : "var(--accent-amber)") : "#64748b";
-        canvasCtx.lineWidth = 2;
-        canvasCtx.beginPath();
-
-        const sliceWidth = width / bufferLength;
-        let x = 0;
-
-        for (let i = 0; i < bufferLength; i++) {
-          const v = dataArray[i] / 128.0;
-          const y = v * (height / 2);
-
-          if (i === 0) {
-            canvasCtx.moveTo(x, y);
-          } else {
-            canvasCtx.lineTo(x, y);
-          }
-
-          x += sliceWidth;
+      } else {
+        window.updateDmmLcd("OFF", "", "OFF MODE");
+        if (dmmLcd) {
+          dmmLcd.classList.remove("backlight-cyan", "backlight-orange", "backlight-green");
         }
-
-        canvasCtx.lineTo(width, height / 2);
-        canvasCtx.stroke();
       }
-
-      // Calculate RMS Level
-      let sum = 0;
-      for (let i = 0; i < bufferLength; i++) {
-        const val = (dataArray[i] - 128) / 128;
-        sum += val * val;
-      }
-      const rms = Math.sqrt(sum / bufferLength);
-      lastCalculatedRms = rms;
-      
-      addRmsToHistory(rms);
-
-      // Dynamically re-evaluate insertion & check key touches
-      evaluateCableInsertion();
-
-      // Update Visual Meter (Normalized scale)
-      const percent = Math.min(100, Math.round(rms * 900));
-      if (contLevelBar) contLevelBar.style.width = `${percent}%`;
-      if (contLevelPercent) contLevelPercent.textContent = `${percent}%`;
-
-      updateContinuityState();
     }
-
-    drawWave();
-    updateCableStatus();
   }
 
-  // Query microphone permission, enumerate devices, and select strictly the wired mic
-  function obtainWiredMicStream() {
-    return navigator.mediaDevices.getUserMedia({ 
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false
-      }
-    })
-    .then(tempStream => {
-      return navigator.mediaDevices.enumerateDevices().then(devices => {
-        const inputs = devices.filter(d => d.kind === 'audioinput');
-        
-        // Find input device matching external headset microphone
-        const wiredMic = inputs.find(d => {
-          const label = d.label.toLowerCase();
-          return label.includes('headset') || 
-                 label.includes('wired') || 
-                 label.includes('external') || 
-                 label.includes('jack') || 
-                 label.includes('line') || 
-                 label.includes('handsfree') ||
-                 label.includes('3.5mm');
-        });
+  // ==================== PROBE CONTROLLER (START / STOP) ====================
 
-        // Also check if current stream track is using the headset mic
-        const activeTrack = tempStream.getAudioTracks()[0];
-        const trackLabel = activeTrack ? activeTrack.label.toLowerCase() : '';
-        const isWiredTrack = trackLabel.includes('headset') || 
-                              trackLabel.includes('wired') || 
-                              trackLabel.includes('external') || 
-                              trackLabel.includes('jack') || 
-                              trackLabel.includes('line') || 
-                              trackLabel.includes('handsfree') ||
-                              trackLabel.includes('3.5mm');
-
-        if (wiredMic) {
-          // Stop temporary stream
-          tempStream.getTracks().forEach(t => t.stop());
-          // Request exact wired mic device
-          return navigator.mediaDevices.getUserMedia({
-            audio: {
-              deviceId: { exact: wiredMic.deviceId },
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false
-            }
-          });
-        } else if (isWiredTrack) {
-          // Current stream is already on the headset microphone
-          return tempStream;
-        } else {
-          // No wired microphone connected, release stream and throw error
-          tempStream.getTracks().forEach(t => t.stop());
-          throw new Error("NoWiredHeadset");
-        }
-      });
-    });
-  }
-
-  function restartMicProbe() {
-    if (micStream) {
-      micStream.getTracks().forEach(track => track.stop());
-    }
-    obtainWiredMicStream()
+  function startProbe() {
+    // Request microphone permission to hold open active audio channel and block system key actions
+    navigator.mediaDevices.getUserMedia({ audio: true })
     .then(stream => {
-      startMicMonitoring(stream);
+      micStream = stream;
+      isProbeActive = true;
+      
+      startBuzzer();
+      startSilentAudio(); // Media Session hijack
+      updateContinuityState();
     })
     .catch(err => {
-      console.warn("Microphone restart failed:", err);
-      stopMicProbe();
-      if (err.message === "NoWiredHeadset") {
-        alert("Wired Headset Cable Unplugged! Continuity tester probe deactivated.");
+      console.error("Microphone access denied: ", err);
+      alert("Microphone permission is required to initialize the hardware audio session for the continuity tester.");
+      if (contPowerToggle) {
+        contPowerToggle.checked = false;
       }
+      stopProbe();
     });
   }
 
-  // ==================== CALIBRATION ====================
-
-  function calibrateNoiseFloor() {
-    if (!isProbeActive || !analyser || isCalibrating) return;
-
-    isCalibrating = true;
-    if (btnCalibrateProbe) {
-      btnCalibrateProbe.textContent = "Calibrating...";
-      btnCalibrateProbe.style.borderColor = "var(--accent-amber-glow)";
-      btnCalibrateProbe.style.color = "var(--accent-amber)";
-    }
-
-    const readings = [];
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
-    const intervalId = setInterval(() => {
-      analyser.getByteTimeDomainData(dataArray);
-      let sum = 0;
-      for (let i = 0; i < bufferLength; i++) {
-        const val = (dataArray[i] - 128) / 128;
-        sum += val * val;
-      }
-      readings.push(Math.sqrt(sum / bufferLength));
-    }, 50);
-
-    setTimeout(() => {
-      clearInterval(intervalId);
-      
-      const averageNoise = readings.reduce((a, b) => a + b, 0) / readings.length;
-      // Set the shorting threshold to 25% of the calibrated open-circuit noise floor
-      silenceThreshold = Math.max(0.0004, averageNoise * 0.25);
-
-      if (contThreshold) {
-        contThreshold.value = silenceThreshold;
-        if (contThresholdVal) contThresholdVal.textContent = silenceThreshold.toFixed(4);
-      }
-
-      isCalibrating = false;
-      if (btnCalibrateProbe) {
-        btnCalibrateProbe.textContent = "⚙️ Recalibrate";
-        btnCalibrateProbe.style.borderColor = "";
-        btnCalibrateProbe.style.color = "";
-      }
-      updateContinuityState();
-    }, 1000);
-  }
-
-  // ==================== PUBLIC API ====================
-
-  window.initContinuityTester = function() {
-    startBuzzer();
-    updateContinuityState();
-  };
-
-  window.stopContinuityTester = function() {
-    isSimTouch = false;
-    isKeyTouch = false;
-    if (btnSimTouch) {
-      btnSimTouch.textContent = "⚡ Simulate Touch";
-      btnSimTouch.style.background = "";
-      btnSimTouch.style.borderColor = "";
-      btnSimTouch.style.color = "";
-    }
-    
-    if (isProbeActive) {
-      stopMicProbe();
-    }
-    
-    stopBuzzer();
-    stopSilentAudio();
-    updateContinuityState();
-  };
-
-  function stopMicProbe() {
+  function stopProbe() {
     isProbeActive = false;
-    
-    if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = null;
-    }
+    isKeyTouch = false;
 
     if (micStream) {
       micStream.getTracks().forEach(track => track.stop());
       micStream = null;
     }
 
-    if (micSource) {
-      micSource.disconnect();
-      micSource = null;
-    }
-
+    stopBuzzer();
     stopSilentAudio();
-
-    if (btnStartProbe) btnStartProbe.style.display = "inline-block";
-    if (btnStopProbe) btnStopProbe.style.display = "none";
-    if (btnCalibrateProbe) btnCalibrateProbe.disabled = true;
-
-    if (contLevelBar) contLevelBar.style.width = "0%";
-    if (contLevelPercent) contLevelPercent.textContent = "0%";
-
-    // Clear oscilloscope canvas
-    const canvas = contOscilloscope;
-    if (canvas) {
-      const canvasCtx = canvas.getContext("2d");
-      canvasCtx.fillStyle = "#0f172a";
-      canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-
-    isCableInserted = false;
-    rmsHistory.length = 0;
-    updateCableStatus();
     updateContinuityState();
   }
 
+  // ==================== PUBLIC API ====================
+
+  window.initContinuityTester = function() {
+    updateContinuityState();
+  };
+
+  window.stopContinuityTester = function() {
+    if (contPowerToggle) {
+      contPowerToggle.checked = false;
+    }
+    stopProbe();
+  };
+
   // ==================== INTERACTION HANDLERS ====================
 
-  if (btnStartProbe) {
-    btnStartProbe.addEventListener("click", () => {
-      obtainWiredMicStream()
-      .then(stream => {
-        isProbeActive = true;
-        isCableInserted = true;
-        hasWiredHardware = true;
-
-        btnStartProbe.style.display = "none";
-        if (btnStopProbe) btnStopProbe.style.display = "inline-block";
-        if (btnCalibrateProbe) btnCalibrateProbe.disabled = false;
-        
-        startMicMonitoring(stream);
-        startSilentAudio(); // Takeover MediaSession
-        
-        // Brief delay before calibration to populate RMS history
-        setTimeout(() => {
-          calibrateNoiseFloor();
-        }, 300);
-      })
-      .catch(err => {
-        if (err.message === "NoWiredHeadset") {
-          alert("Wired Headset Cable Not Detected!\n\nPlease insert your continuity tester wire cable (plugged into the 3.5mm headphone jack with a 2.2K ohm resistor bridging MIC and GND) before enabling the probe.");
-          isProbeActive = false;
-          isCableInserted = false;
-          hasWiredHardware = false;
-          updateCableStatus();
-          updateContinuityState();
-        } else {
-          console.error("Microphone access denied: ", err);
-          alert("Microphone permission denied! You can still test using the physical Headset Volume/Hook Buttons or the 'Simulate Touch' button.");
-        }
-      });
-    });
-  }
-
-  if (btnStopProbe) {
-    btnStopProbe.addEventListener("click", stopMicProbe);
-  }
-
-  if (btnSimTouch) {
-    btnSimTouch.addEventListener("click", () => {
-      isSimTouch = !isSimTouch;
-      if (isSimTouch) {
-        btnSimTouch.textContent = "⚡ Release Touch";
-        btnSimTouch.style.background = "var(--accent-amber)";
-        btnSimTouch.style.borderColor = "var(--accent-amber-glow)";
-        btnSimTouch.style.color = "#000";
+  if (contPowerToggle) {
+    contPowerToggle.addEventListener("change", (e) => {
+      if (e.target.checked) {
+        startProbe();
       } else {
-        btnSimTouch.textContent = "⚡ Simulate Touch";
-        btnSimTouch.style.background = "";
-        btnSimTouch.style.borderColor = "";
-        btnSimTouch.style.color = "";
+        stopProbe();
       }
-      updateContinuityState();
-    });
-  }
-
-  if (btnCalibrateProbe) {
-    btnCalibrateProbe.addEventListener("click", calibrateNoiseFloor);
-  }
-
-  if (contThreshold) {
-    contThreshold.addEventListener("input", (e) => {
-      silenceThreshold = parseFloat(e.target.value);
-      if (contThresholdVal) contThresholdVal.textContent = silenceThreshold.toFixed(4);
-      updateContinuityState();
     });
   }
 
@@ -742,7 +272,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const volPercent = parseInt(e.target.value);
       currentVolume = volPercent / 100;
       if (contVolumeVal) contVolumeVal.textContent = `${volPercent}%`;
-      updateContinuityState();
+      if (isProbeActive) {
+        updateContinuityState();
+      }
     });
   }
 });
