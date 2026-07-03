@@ -1,4 +1,4 @@
-// js/continuity.js - Simplified Audio Jack Continuity Tester Controller
+// js/continuity.js - Simplified Audio Jack Continuity Tester Controller (Button-Based Toggle)
 
 document.addEventListener("DOMContentLoaded", () => {
   // DOM Elements
@@ -9,22 +9,110 @@ document.addEventListener("DOMContentLoaded", () => {
   const contVolume = document.getElementById("cont-volume");
   const contVolumeVal = document.getElementById("cont-volume-val");
 
-  // Web Audio Context
-  let audioCtx = null;
+  // Hardware Audio Sessions (HTML5 elements, no Web Audio API)
   let micStream = null;
-  let buzzerOsc = null;
-  let buzzerGain = null;
-  
-  // Background Silent Audio for MediaSession takeover
+  let buzzerAudio = null;
   let silentAudio = null;
 
   // State Variables
   let isProbeActive = false;
-  let isKeyTouch = false;
+  let isShort = false; // Latching toggle state
   let currentVolume = 0.5; // Default 50%
 
   // DMM LCD reference
   const dmmLcd = document.getElementById("dmm-lcd");
+
+  // ==================== PCM WAV GENERATOR (NO WEB AUDIO) ====================
+  // Generates a pure sine wave WAV file in memory and returns a Blob URL
+  function generateBeepWavUrl(frequency, duration) {
+    const sampleRate = 8000;
+    const numSamples = sampleRate * duration;
+    const buffer = new Uint8Array(44 + numSamples);
+    
+    // Write RIFF WAV Header
+    buffer[0] = 0x52; buffer[1] = 0x49; buffer[2] = 0x46; buffer[3] = 0x46; // "RIFF"
+    const fileSize = 36 + numSamples;
+    buffer[4] = fileSize & 0xff;
+    buffer[5] = (fileSize >> 8) & 0xff;
+    buffer[6] = (fileSize >> 16) & 0xff;
+    buffer[7] = (fileSize >> 24) & 0xff;
+    buffer[8] = 0x57; buffer[9] = 0x41; buffer[10] = 0x56; buffer[11] = 0x45; // "WAVE"
+    buffer[12] = 0x66; buffer[13] = 0x6d; buffer[14] = 0x74; buffer[15] = 0x20; // "fmt "
+    buffer[16] = 16; buffer[17] = 0; buffer[18] = 0; buffer[19] = 0; // Chunk size (16)
+    buffer[20] = 1; buffer[21] = 0; // PCM format
+    buffer[22] = 1; buffer[23] = 0; // Mono channel
+    buffer[24] = sampleRate & 0xff;
+    buffer[25] = (sampleRate >> 8) & 0xff;
+    buffer[26] = (sampleRate >> 16) & 0xff;
+    buffer[27] = (sampleRate >> 24) & 0xff; // Sample rate
+    buffer[28] = sampleRate & 0xff;
+    buffer[29] = (sampleRate >> 8) & 0xff;
+    buffer[30] = (sampleRate >> 16) & 0xff;
+    buffer[31] = (sampleRate >> 24) & 0xff; // Byte rate
+    buffer[32] = 1; buffer[33] = 0; // Block align
+    buffer[34] = 8; buffer[35] = 0; // 8-bit depth
+    buffer[36] = 0x64; buffer[37] = 0x61; buffer[38] = 0x74; buffer[39] = 0x61; // "data"
+    buffer[40] = numSamples & 0xff;
+    buffer[41] = (numSamples >> 8) & 0xff;
+    buffer[42] = (numSamples >> 16) & 0xff;
+    buffer[43] = (numSamples >> 24) & 0xff; // Data size
+    
+    // Fill sine wave samples
+    for (let i = 0; i < numSamples; i++) {
+      const t = i / sampleRate;
+      const sample = Math.round(128 + 127 * Math.sin(2 * Math.PI * frequency * t));
+      buffer[44 + i] = sample;
+    }
+    
+    const blob = new Blob([buffer], { type: 'audio/wav' });
+    return URL.createObjectURL(blob);
+  }
+
+  function initBuzzerAudio() {
+    if (!buzzerAudio) {
+      const wavUrl = generateBeepWavUrl(2500, 1.0); // 2500Hz, 1 second loop length
+      buzzerAudio = new Audio(wavUrl);
+      buzzerAudio.loop = true;
+    }
+  }
+
+  // ==================== SPEAKER AUDIO ROUTING ====================
+  // Routes HTML5 Audio output to the built-in speaker, bypassing the physical headphone plug output
+  function routeAudioToSpeaker() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+      const outputs = devices.filter(d => d.kind === 'audiooutput');
+      const speaker = outputs.find(d => {
+        const label = d.label.toLowerCase();
+        return label.includes('speaker') || 
+               label.includes('loudspeaker') || 
+               label.includes('built-in speaker') || 
+               label.includes('speakerphone') || 
+               label.includes('internal');
+      });
+
+      const targetDeviceId = speaker ? speaker.deviceId : (outputs[0] ? outputs[0].deviceId : null);
+
+      if (targetDeviceId) {
+        if (buzzerAudio && typeof buzzerAudio.setSinkId === 'function') {
+          buzzerAudio.setSinkId(targetDeviceId).catch(() => {});
+        }
+        if (silentAudio && typeof silentAudio.setSinkId === 'function') {
+          silentAudio.setSinkId(targetDeviceId).catch(() => {});
+        }
+      }
+    });
+  }
+
+  // ==================== LATCHING STATE TOGGLE ====================
+  // Toggles the short circuit state and buzzer on hardware tap events
+  function handleHardwareTrigger() {
+    if (!isProbeActive) return;
+    
+    isShort = !isShort;
+    updateContinuityState();
+  }
 
   // ==================== KEY INTERCEPTION & BLOCKING ====================
   // Intercept volume, assistant, and media buttons globally to block default OS actions
@@ -44,12 +132,9 @@ document.addEventListener("DOMContentLoaded", () => {
       e.stopPropagation();
       e.stopImmediatePropagation();
 
+      // Trigger toggle ONLY on keydown
       if (e.type === 'keydown') {
-        isKeyTouch = true;
-        updateContinuityState();
-      } else if (e.type === 'keyup') {
-        isKeyTouch = false;
-        updateContinuityState();
+        handleHardwareTrigger();
       }
     }
   };
@@ -58,59 +143,13 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener('keyup', blockKeys, { capture: true, passive: false });
   window.addEventListener('keypress', blockKeys, { capture: true, passive: false });
 
-  // Re-route audio on device changes (plug/unplug)
+  // Re-route audio on device insertion/removal
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
     navigator.mediaDevices.addEventListener("devicechange", () => {
       if (isProbeActive) {
         setTimeout(routeAudioToSpeaker, 300);
       }
     });
-  }
-
-  // ==================== AUDIO SETUP ====================
-  
-  function initAudioContext() {
-    if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (audioCtx.state === "suspended") {
-      audioCtx.resume();
-    }
-  }
-
-  function startBuzzer() {
-    initAudioContext();
-    if (!audioCtx) return;
-
-    if (!buzzerOsc) {
-      buzzerOsc = audioCtx.createOscillator();
-      buzzerGain = audioCtx.createGain();
-
-      buzzerOsc.type = "sine";
-      buzzerOsc.frequency.setValueAtTime(2500, audioCtx.currentTime); // High pitch continuity beep
-      buzzerGain.gain.setValueAtTime(0, audioCtx.currentTime); // Start silent
-
-      buzzerOsc.connect(buzzerGain);
-      buzzerGain.connect(audioCtx.destination);
-      buzzerOsc.start();
-    }
-  }
-
-  function setBuzzerVolume(volume) {
-    if (buzzerGain && audioCtx) {
-      buzzerGain.gain.setTargetAtTime(volume, audioCtx.currentTime, 0.01);
-    }
-  }
-
-  function stopBuzzer() {
-    if (buzzerOsc) {
-      try {
-        buzzerOsc.stop();
-        buzzerOsc.disconnect();
-      } catch (e) {}
-      buzzerOsc = null;
-      buzzerGain = null;
-    }
   }
 
   // ==================== GOOGLE ASSISTANT PREVENTER ====================
@@ -131,16 +170,15 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       try {
+        // Toggle on play/pause actions (headset prongs touch)
         navigator.mediaSession.setActionHandler('play', () => {
-          isKeyTouch = true;
-          updateContinuityState();
+          handleHardwareTrigger();
         });
         navigator.mediaSession.setActionHandler('pause', () => {
-          isKeyTouch = false;
-          updateContinuityState();
+          handleHardwareTrigger();
         });
         navigator.mediaSession.setActionHandler('stop', () => {
-          isKeyTouch = false;
+          isShort = false;
           updateContinuityState();
         });
       } catch (e) {}
@@ -159,19 +197,23 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==================== STATE MANAGEMENT ====================
 
   function updateContinuityState() {
-    // Continuity is detected only if the tester is active (ON) and the hook button is shorted/pressed
-    const isContinuityDetected = isProbeActive && isKeyTouch;
-
     // Update Buzzer Sound
-    if (isContinuityDetected) {
-      setBuzzerVolume(currentVolume);
+    if (isProbeActive && isShort) {
+      initBuzzerAudio();
+      if (buzzerAudio) {
+        buzzerAudio.volume = currentVolume;
+        buzzerAudio.play().catch(() => {});
+      }
     } else {
-      setBuzzerVolume(0);
+      if (buzzerAudio) {
+        buzzerAudio.pause();
+        buzzerAudio.currentTime = 0;
+      }
     }
 
     // Update UI Panel
     if (contStatusIndicator && contStatusText && contSubText) {
-      if (isContinuityDetected) {
+      if (isProbeActive && isShort) {
         contStatusIndicator.style.backgroundColor = "var(--accent-green)";
         contStatusIndicator.style.boxShadow = "0 0 12px var(--accent-green-glow)";
         contStatusText.textContent = "CONTINUITY DETECTED (SHORT)";
@@ -194,8 +236,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Update Skeuomorphic Multimeter LCD
     if (window.currentView === "continuity-view") {
-      if (isContinuityDetected) {
-        window.updateDmmLcd("0.0", "Ω", "CONTINUITY");
+      if (isProbeActive && isShort) {
+        window.updateDmmLcd("PASS", "", "CONTINUITY");
         if (dmmLcd) {
           dmmLcd.classList.remove("backlight-cyan", "backlight-orange", "backlight-green");
           dmmLcd.classList.add("backlight-green");
@@ -215,41 +257,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // ==================== AUDIO ROUTING TO SPEAKER ====================
-  // Force audio output to the built-in speaker even when headphone jack is plugged in
-  function routeAudioToSpeaker() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
-
-    navigator.mediaDevices.enumerateDevices().then(devices => {
-      const outputs = devices.filter(d => d.kind === 'audiooutput');
-      const speaker = outputs.find(d => {
-        const label = d.label.toLowerCase();
-        return label.includes('speaker') || 
-               label.includes('loudspeaker') || 
-               label.includes('built-in speaker') || 
-               label.includes('speakerphone') || 
-               label.includes('internal');
-      });
-
-      const targetDeviceId = speaker ? speaker.deviceId : (outputs[0] ? outputs[0].deviceId : null);
-
-      if (targetDeviceId) {
-        // Route audio context output to speaker
-        if (audioCtx && typeof audioCtx.setSinkId === 'function') {
-          audioCtx.setSinkId(targetDeviceId).catch(err => {
-            console.warn("Failed to set audioCtx sink to speaker:", err);
-          });
-        }
-        // Route silent audio media session track to speaker
-        if (silentAudio && typeof silentAudio.setSinkId === 'function') {
-          silentAudio.setSinkId(targetDeviceId).catch(() => {});
-        }
-      }
-    }).catch(err => {
-      console.warn("Device enumeration failed for audio output routing:", err);
-    });
-  }
-
   // ==================== PROBE CONTROLLER (START / STOP) ====================
 
   function startProbe() {
@@ -258,11 +265,12 @@ document.addEventListener("DOMContentLoaded", () => {
     .then(stream => {
       micStream = stream;
       isProbeActive = true;
+      isShort = false;
       
-      startBuzzer();
+      initBuzzerAudio();
       startSilentAudio(); // Media Session hijack
       
-      // Delay speaker routing slightly to ensure AudioContext is active
+      // Delay speaker routing slightly to ensure outputs are populated
       setTimeout(routeAudioToSpeaker, 200);
       
       updateContinuityState();
@@ -279,14 +287,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function stopProbe() {
     isProbeActive = false;
-    isKeyTouch = false;
+    isShort = false;
 
     if (micStream) {
       micStream.getTracks().forEach(track => track.stop());
       micStream = null;
     }
 
-    stopBuzzer();
+    if (buzzerAudio) {
+      buzzerAudio.pause();
+      buzzerAudio.currentTime = 0;
+    }
     stopSilentAudio();
     updateContinuityState();
   }
@@ -321,9 +332,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const volPercent = parseInt(e.target.value);
       currentVolume = volPercent / 100;
       if (contVolumeVal) contVolumeVal.textContent = `${volPercent}%`;
-      if (isProbeActive) {
-        updateContinuityState();
-      }
+      setBuzzerVolume(currentVolume);
     });
   }
 });
