@@ -27,7 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const dmmLcd = document.getElementById("dmm-lcd");
 
   // ==================== KEY INTERCEPTION & BLOCKING ====================
-  // Intercept volume and media buttons globally to block default OS actions
+  // Intercept volume, assistant, and media buttons globally to block default OS actions
   const blockKeys = (e) => {
     if (window.currentView !== "continuity-view" || !isProbeActive) return;
 
@@ -35,10 +35,11 @@ document.addEventListener("DOMContentLoaded", () => {
       'VolumeUp', 'VolumeDown', 
       'AudioVolumeUp', 'AudioVolumeDown',
       'MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop',
-      'HeadsetHook'
+      'HeadsetHook', 'Search', 'VoiceCommand', 'VoiceAssist'
     ];
+    const keyCodesToBlock = [24, 25, 79, 84, 174, 175, 179, 220, 221, 231];
 
-    if (keysToBlock.includes(e.key) || [24, 25, 179, 174, 175].includes(e.keyCode)) {
+    if (keysToBlock.includes(e.key) || keyCodesToBlock.includes(e.keyCode)) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
@@ -56,6 +57,15 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener('keydown', blockKeys, { capture: true, passive: false });
   window.addEventListener('keyup', blockKeys, { capture: true, passive: false });
   window.addEventListener('keypress', blockKeys, { capture: true, passive: false });
+
+  // Re-route audio on device changes (plug/unplug)
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    navigator.mediaDevices.addEventListener("devicechange", () => {
+      if (isProbeActive) {
+        setTimeout(routeAudioToSpeaker, 300);
+      }
+    });
+  }
 
   // ==================== AUDIO SETUP ====================
   
@@ -205,6 +215,41 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // ==================== AUDIO ROUTING TO SPEAKER ====================
+  // Force audio output to the built-in speaker even when headphone jack is plugged in
+  function routeAudioToSpeaker() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+      const outputs = devices.filter(d => d.kind === 'audiooutput');
+      const speaker = outputs.find(d => {
+        const label = d.label.toLowerCase();
+        return label.includes('speaker') || 
+               label.includes('loudspeaker') || 
+               label.includes('built-in speaker') || 
+               label.includes('speakerphone') || 
+               label.includes('internal');
+      });
+
+      const targetDeviceId = speaker ? speaker.deviceId : (outputs[0] ? outputs[0].deviceId : null);
+
+      if (targetDeviceId) {
+        // Route audio context output to speaker
+        if (audioCtx && typeof audioCtx.setSinkId === 'function') {
+          audioCtx.setSinkId(targetDeviceId).catch(err => {
+            console.warn("Failed to set audioCtx sink to speaker:", err);
+          });
+        }
+        // Route silent audio media session track to speaker
+        if (silentAudio && typeof silentAudio.setSinkId === 'function') {
+          silentAudio.setSinkId(targetDeviceId).catch(() => {});
+        }
+      }
+    }).catch(err => {
+      console.warn("Device enumeration failed for audio output routing:", err);
+    });
+  }
+
   // ==================== PROBE CONTROLLER (START / STOP) ====================
 
   function startProbe() {
@@ -216,6 +261,10 @@ document.addEventListener("DOMContentLoaded", () => {
       
       startBuzzer();
       startSilentAudio(); // Media Session hijack
+      
+      // Delay speaker routing slightly to ensure AudioContext is active
+      setTimeout(routeAudioToSpeaker, 200);
+      
       updateContinuityState();
     })
     .catch(err => {
