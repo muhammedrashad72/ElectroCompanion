@@ -123,4 +123,41 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Initialize Lightbox bindings
   bindLightbox();
+
+  // ==================== PLATFORM TOGGLE INTERACTION ====================
+  const platformTabs = document.querySelectorAll(".platform-tab");
+  const androidSection = document.getElementById("platform-android-section");
+  const iphoneSection = document.getElementById("platform-iphone-section");
+
+  platformTabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      platformTabs.forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+
+      const platform = tab.getAttribute("data-platform");
+      if (platform === "android") {
+        if (androidSection) androidSection.style.display = "flex";
+        if (iphoneSection) iphoneSection.style.display = "none";
+        
+        // Trigger click on currently active android category button to show its panel
+        const activePill = androidSection ? androidSection.querySelector(".filter-pill.active") : null;
+        if (activePill) {
+          activePill.click();
+        }
+      } else {
+        if (androidSection) androidSection.style.display = "none";
+        if (iphoneSection) iphoneSection.style.display = "flex";
+        
+        // Show iPhone placeholder
+        document.querySelectorAll(".repair-category-content").forEach(content => {
+          content.style.display = "none";
+        });
+        if (repCatPlaceholder) {
+          repCatPlaceholder.style.display = "flex";
+          placeholderTitle.textContent = "🍎 iPhone Repair Notes";
+          placeholderDesc.textContent = "No diagnostic notes for iPhone are currently available. iPhone schematic and common issue databases are under preparation.";
+        }
+      }
+    });
+  });
 });
